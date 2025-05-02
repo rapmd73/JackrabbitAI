@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Jackrabit AI
+# 2024 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
+import sys
+sys.path.append('/home/JackrabbitAI/Library')
+import os
+import requests
+import re
+
+import DecoratorFunctions as DF
+import FileFunctions as FF
+
+@DF.function_trapper
+def GetPerplexity(model,role,input):
+    # Read Tokens
+    Tokens=FF.ReadTokens()
+
+    # Prepare the payload for the request
+    payload={
+            "model":model,
+            "messages":[ { "role":"system", "content": role },
+                       { "role":"user",   "content": input } ]
+        }
+
+    # Perplexity URL
+    PerplexityURL="https://api.perplexity.ai/chat/completions"
+
+    # Set up headers including authorization
+    headers={
+            "Authorization": f"Bearer {Tokens['Perplexity']}",
+            "Content-Type": "application/json"
+        }
+
+    # Make the POST request to the Perplexity API
+    response=requests.post(PerplexityURL, json=payload, headers=headers,timeout=120)
+
+    # Check if the request was successful
+    if response.status_code==200:
+        completion=response.json()
+
+    response=completion["choices"][0]["message"]["content"].strip()
+
+    # If there are citations in the choices text portion, append
+    # them to the response. This is not neccessary, but it does look
+    # nice and adds to the bot's presence.
+
+    IsCitations=any(re.search(r'\[\d+\]', choice.get("message", {}).get("content", "")) for choice in completion.get("choices", []))
+    if IsCitations:
+        response+="\n\n"+"\n".join(f"{url}" for url in completion['citations'])
+    return response
+
+@DF.function_trapper
+def main():
+    if len(sys.argv)>2:
+        model=sys.argv[1]
+        role=sys.argv[2]
+    else:
+        print("A model and intructions must be supplied.")
+        sys.exit(0)
+
+    input=sys.stdin.read().replace('\n','\\n').replace('"',"'")
+
+    response=GetPerplexity(model,role,input)
+    print(response)
+
+if __name__=='__main__':
+    main()
+
