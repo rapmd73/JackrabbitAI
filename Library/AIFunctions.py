@@ -13,6 +13,7 @@ import itertools
 import functools
 import inspect
 import traceback
+import requests
 import datetime
 import time
 import random
@@ -26,6 +27,8 @@ import together
 import cohere
 import huggingface_hub
 import anthropic
+from transformers import AutoTokenizer
+from googleapiclient.discovery import build
 
 import DecoratorFunctions as DF
 import CoreFunctions as CF
@@ -406,9 +409,14 @@ class Agent:
 
     @DF.function_trapper(None)
     def GetAnthropic(self,apikey,messages,model,freqpenalty,temperature,timeout):
+        sysmsg=messages[0]['content']
+        if len(messages)==1:
+            messages.append(messages[0])
+            sysmsg=""
+
         clientAI=anthropic.Anthropic(api_key=apikey,timeout=timeout)
         completion=clientAI.messages.create(
-                system=messages[0]['content'],
+                system=sysmsg,
                 model=model,
                 max_tokens=4096,
                 temperature=temperature,
