@@ -17,3 +17,5 @@ praw
 atproto
 python-telegram-bot
 telethon
+gtts
+playwright

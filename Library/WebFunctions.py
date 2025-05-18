@@ -23,6 +23,7 @@ import requests
 import pdfplumber
 import youtube_transcript_api
 import scrapingant_client as Ant
+from playwright.sync_api import sync_playwright
 
 import DecoratorFunctions as DF
 import CoreFunctions as CF
@@ -184,10 +185,11 @@ def StripHTML(htmlbuf):
 # function skips to Scraping Ant. This is useful for site that require cookies or
 # JavaScript (a serverless browser).
 
-@DF.function_trapper(None)
-def html2text(url, internal=True,external=True,userhome=None):
+#@DF.function_trapper(None)
+def html2text(url,internal=True,external=True,userhome=None,raw=False):
     # Set the user agent
-    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
+    userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+    headers={'User-Agent': userAgent}
 
     # Video transcript?
     if 'youtube.com/watch' in url or 'youtu.be/' in url:
@@ -199,11 +201,22 @@ def html2text(url, internal=True,external=True,userhome=None):
     html=None
     if internal:
         try:
-            req=requests.get(url, headers=headers,timeout=60)
-            if req.status_code!=200:
-                html=None
-            else:
-                html=req.content
+#           Doesn't work well because of JavaScript
+#            req=requests.get(url, headers=headers,timeout=60)
+#            if req.status_code!=200:
+#                html=None
+#            else:
+#                html=req.content
+
+            # Headless browser
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                context = browser.new_context(user_agent=userAgent)
+                page = context.new_page()
+                page.set_default_timeout(60*1000)
+                page.goto(url)
+                html=page.content()
+                browser.close()
         except Exception as err:
             html=None
 
@@ -212,20 +225,30 @@ def html2text(url, internal=True,external=True,userhome=None):
         if not html:
             return None
         # Convert to bytes
-        html=html.encode('utf-8',errors='ignore')
+#        html=html.encode('utf-8',errors='ignore')
         if not html:
             return None
 
     # Check for PDF signature
     if html[:5]=='%PDF-':
+        # MUST be type bytes
+        if type(html) is not bytes:
+            html=html.encode('utf-8',errors='ignore')
         text=PDF2Text(html).strip()
         print("PDF:",len(text),url)
         return text
 
-    # Decoding MUST be done AFTER pdf test
-    html=DecodeHashCodes(html.decode('utf-8',errors='ignore'))
+    # Decoding (if needed) MUST be done AFTER pdf test
+    if type(html) is bytes:
+        html=DecodeHashCodes(html.decode('utf-8',errors='ignore'))
 
-    text=StripHTML(html)
+    # When served raw, serve only html
+    if raw:
+        return html
+
+    text=StripHTML(html).strip()
+    if text=='':
+        return None
 
     return 'Web Page Content: '+text
 
