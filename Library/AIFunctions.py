@@ -456,19 +456,26 @@ class Agent:
 
     @DF.function_trapper(None)
     def GetCohere(self,apikey,messages,model,freqpenalty,temperature,timeout):
-        safemode="NONE"
-        if 'command-a' in model:
-            safemode="CONTEXTUAL"
+        def ContactCohere(apikey,messages,model,freqpenalty,temperature,timeout,safemode):
+            clientAI=cohere.ClientV2(api_key=apikey, timeout=timeout)
+            completion=clientAI.chat(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    safety_mode=safemode
+                )
+            response=completion.message.content[0].text.strip()
+            return response,completion
 
-        clientAI=cohere.ClientV2(api_key=apikey, timeout=timeout)
-        completion=clientAI.chat(
-                model=model,
-                frequency_penalty=freqpenalty,
-                temperature=temperature,
-                messages=messages,
-                safety_mode=safemode
-            )
-        response=completion.message.content[0].text.strip()
+        # Not all model allow unfilitered access
+        try:
+            safemode="NONE"
+            response,completion=ContactCohere(apikey,messages,model,freqpenalty,temperature,timeout,safemode)
+        except Exception as err:
+            safemode="CONTEXTUAL"
+            response,completion=ContactCohere(apikey,messages,model,freqpenalty,temperature,timeout,safemode)
+
         return response,completion
 
     @DF.function_trapper(None)
