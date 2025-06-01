@@ -472,11 +472,11 @@ class Agent:
         try:
             safemode="NONE"
             response,completion=ContactCohere(apikey,messages,model,freqpenalty,temperature,timeout,safemode)
+            return response,completion
         except Exception as err:
             safemode="CONTEXTUAL"
             response,completion=ContactCohere(apikey,messages,model,freqpenalty,temperature,timeout,safemode)
-
-        return response,completion
+            return response,completion
 
     @DF.function_trapper(None)
     def GetOllama(self,apikey,messages,model,freqpenalty,temperature,timeout,seed=0,mt=2048):

@@ -279,7 +279,8 @@ def url2html(url, internal=True,external=True,userhome=None):
             return None
 
     # Decoding MUST be done AFTER pdf test
-    html=DecodeHashCodes(html.decode('utf-8',errors='ignore'))
+    if html:
+        html=DecodeHashCodes(html.decode('utf-8',errors='ignore'))
 
     return html
 
