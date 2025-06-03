@@ -220,7 +220,7 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
         except Exception as err:
             html=None
 
-    if not html
+    if not html:
         if external==True:
             html=ScrapingAnt(url,userhome=userhome)
             if not html:
