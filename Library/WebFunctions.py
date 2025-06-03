@@ -220,17 +220,20 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
         except Exception as err:
             html=None
 
-    if not html and external==True:
-        html=ScrapingAnt(url,userhome=userhome)
-        if not html:
-            return None
-        # Convert to bytes
-#        html=html.encode('utf-8',errors='ignore')
-        if not html:
+    if not html
+        if external==True:
+            html=ScrapingAnt(url,userhome=userhome)
+            if not html:
+                return None
+            # Convert to bytes
+    #        html=html.encode('utf-8',errors='ignore')
+            if not html:
+                return None
+        else:
             return None
 
     # Check for PDF signature
-    if html[:5]=='%PDF-':
+    if html and html[:5]=='%PDF-':
         # MUST be type bytes
         if type(html) is not bytes:
             html=html.encode('utf-8',errors='ignore')
