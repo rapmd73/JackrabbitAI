@@ -109,13 +109,25 @@ def yttags2text(url,userhome=None):
 # Transcript:".
 
 @DF.function_trapper(None)
-def youtube2text(video_url):
+def youtube2text(video_url,retry=3):
     # Extract the video ID from the URL
     #video_id=video_url.split('v=')[1]
     video_id=re.search(r'(v=|be/|embed/|v/|youtu\.be/|\/videos\/|\/shorts\/|\/watch\?v=|\/watch\?si=|\/watch\?.*?&v=)([a-zA-Z0-9_-]{11})',video_url).group(2)
 
     # Fetch the transcript using the YouTubeTranscriptApi
-    transcript_list=youtube_transcript_api.YouTubeTranscriptApi.get_transcript(video_id)
+    transcript_list=[]
+    c=0
+    while c<retry:
+        try:
+            transcript_list=youtube_transcript_api.YouTubeTranscriptApi.get_transcript(video_id)
+            c=retry+1
+        except Exception as err:
+            #print("ERROR",err)
+            time.sleep(3)
+        c+=1
+
+    if not transcript_list or transcript_list==[]:
+        return None
 
     # Use the TextFormatter to convert the transcript into plain text
     transcript_text='\n'.join(line['text'] for line in transcript_list)
