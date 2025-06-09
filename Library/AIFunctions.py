@@ -307,6 +307,8 @@ class Agent:
                 self.response,self.completion=self.GetCohere(Tokens['Cohere'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='ollama':
                 self.response,self.completion=self.GetOllama(Tokens['Ollama'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=mt)
+            elif self.engine=='xai':
+               self.response,self.completion=self.GetxAI(Tokens['xAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='openrouter':
                self.response,self.completion=self.GetOpenRouter(Tokens['OpenRouter'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='anthropic':
@@ -389,6 +391,28 @@ class Agent:
                 messages=messages,
                 timeout=timeout
             )
+        clientAI.close()
+        response=completion.choices[0].message.content.strip()
+        return response,completion
+
+    @DF.function_trapper(None)
+    def GetxAI(self,apikey,messages,model,freqpenalty,temperature,timeout):
+        clientAI=openai.OpenAI(api_key=apikey,base_url="https://api.x.ai/v1")
+        try:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+        except Exception as err:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
         clientAI.close()
         response=completion.choices[0].message.content.strip()
         return response,completion
