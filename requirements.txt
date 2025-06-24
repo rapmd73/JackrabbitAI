@@ -19,3 +19,4 @@ python-telegram-bot
 telethon
 gtts
 playwright
+beautifulsoup4

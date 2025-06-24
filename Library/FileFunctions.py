@@ -74,14 +74,15 @@ def WriteFile(fn,data):
 # file.
 
 @DF.function_trapper(None)
-def ReadFile2List(fname,ForceLower=False,ForceUpper=False):
+def ReadFile2List(fname,ForceLower=False,ForceUpper=False,NoStripEmpty=False):
     # Something broke. Keep the responses in character
     if not os.path.exists(fname):
         return None
 
     responses=ReadFile(fname).strip().split('\n')
-    while '' in responses:
-        responses.remove('')
+    if NoStripEmpty==False:
+        while '' in responses:
+            responses.remove('')
     if ForceLower==True:
         responses=[item.lower() for item in responses]
     if ForceUpper==True:

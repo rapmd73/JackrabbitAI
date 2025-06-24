@@ -24,6 +24,7 @@ import pdfplumber
 import youtube_transcript_api
 import scrapingant_client as Ant
 from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 
 import DecoratorFunctions as DF
 import CoreFunctions as CF
@@ -213,14 +214,6 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
     html=None
     if internal:
         try:
-#           Doesn't work well because of JavaScript
-#            req=requests.get(url, headers=headers,timeout=60)
-#            if req.status_code!=200:
-#                html=None
-#            else:
-#                html=req.content
-
-            # Headless browser
             with sync_playwright() as p:
                 browser = p.chromium.launch()
                 context = browser.new_context(user_agent=userAgent)
@@ -261,43 +254,27 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
     if raw:
         return html
 
-    text=StripHTML(html).strip()
+    # Strip the HTML
+#    text=StripHTML(html).strip()
+
+    # Parse the HTML
+    soup=BeautifulSoup(html,'html.parser')
+
+    for tag in soup(['script', 'style']):
+        tag.decompose()
+
+    # Extract and print only the text content
+    text=soup.get_text().strip()
+
     if text=='':
         return None
 
-    return 'Web Page Content: '+text
+    # Normalize: strip spaces on each line
+    lines=[line.strip() for line in text.splitlines()]
+    # Remove empty lines and collapse multiple newlines to a single newline
+    cleaned='\n'.join(line for line in lines if line)
 
-def url2html(url, internal=True,external=True,userhome=None):
-    # Set the user agent
-    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
-
-    # Not a YouTube transcript, Fetch the HTML content from the URL
-
-    html=None
-    if internal:
-        try:
-            req=requests.get(url, headers=headers,timeout=60)
-            if req.status_code!=200:
-                html=None
-            else:
-                html=req.content
-        except Exception as err:
-            html=None
-
-    if not html and external==True:
-        html=ScrapingAnt(url,userhome=userhome)
-        if not html:
-            return None
-        # Convert to bytes
-        html=html.encode('utf-8',errors='ignore')
-        if not html:
-            return None
-
-    # Decoding MUST be done AFTER pdf test
-    if html:
-        html=DecodeHashCodes(html.decode('utf-8',errors='ignore'))
-
-    return html
+    return 'Web Page Content: '+cleaned
 
 ###
 ### Functions for AbuseIPDB

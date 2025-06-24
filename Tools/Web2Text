@@ -8,5 +8,15 @@ import os
 import FileFunctions as FF
 import WebFunctions as WF
 
-print(WF.html2text(sys.argv[1],raw=True))
+raw=False
+if len(sys.argv)>2:
+    if '-raw' in sys.argv:
+        sys.argv.remove('-raw')
+        raw=True
+
+if len(sys.argv)<2:
+    print("Please verify URL...")
+    sys.exit(1)
+
+print(WF.html2text(sys.argv[1],raw=raw))
 
