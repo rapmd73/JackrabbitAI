@@ -2,8 +2,57 @@
 # -*- coding: utf-8 -*-
 #
 # Jackrabbit AI
-# 2021 Copyright © Robert APM Darin
+# 2021-2035 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
+
+# This Python script is a collection of utility functions designed to handle
+# various tasks, such as text processing, system monitoring, and input
+# validation. It begins by importing several built-in Python modules, including
+# those for system operations, file handling, date and time management, and
+# regular expressions. Additionally, it imports a custom module named
+# `DecoratorFunctions`, which likely contains decorators used to enhance or
+# modify the behavior of the functions in this script.
+
+# The script defines several global variables, including the name of the
+# running script and a directory path for token storage. These variables are
+# used throughout the script to maintain consistency and provide context for
+# certain operations.
+
+# One of the key functions, `DecodeHashCodes`, is designed to decode numeric
+# character references in a string, such as `&#65;`, and replace them with
+# their corresponding characters. It uses a regular expression to identify
+# these patterns and a helper function to perform the conversion. Another
+# function, `DecodeUnicode`, replaces various Unicode characters with their
+# ASCII equivalents, making the text more compatible with systems that
+# primarily use ASCII.
+
+# The `Yesterday` function calculates the date of the previous day, either
+# based on the current date or a provided date string. However, there appears
+# to be a bug in this function, as it references an undefined variable instead
+# of using the provided parameter correctly.
+
+# Several functions are dedicated to system monitoring and resource management.
+# `GetLoadAVG` retrieves the system's current load average by reading from a
+# specific file, providing insight into the system's workload. The `renice`
+# function adjusts the priority of the current process, allowing it to run at a
+# higher or lower priority level, which can be useful for managing system
+# resources. `ElasticSleep` introduces a delay in execution, optionally
+# adjusting the sleep duration based on the system's load to prevent
+# overloading. Similarly, `ElasticDelay` calculates a dynamic delay based on
+# system load, ensuring that processes don't overwhelm the system.
+
+# Text processing is another significant aspect of this script. The
+# `NumberOnly` function validates whether a string represents a valid number,
+# considering various numeric characters and look-alike symbols.
+# `StripPunctuation` removes punctuation and high ASCII characters from text,
+# replacing them with spaces to clean up the input. `jsonFilter` prepares a
+# string for JSON processing by removing unwanted characters like newlines,
+# tabs, and spaces. `GetWordList` processes a block of text into a list of
+# lowercase words, removing any empty entries.
+
+# Lastly, the `IsSTDIN` function checks if there is input available on the
+# standard input within a one-second timeout. This is useful for determining
+# whether a program should wait for user input or proceed with other tasks.
 
 import sys
 import os
@@ -38,7 +87,15 @@ TokenStorage='/home/JackrabbitAI/Tokens'
 
 MasterNice=os.getpriority(os.PRIO_PROCESS,0)
 
-# Turn &#08 into a character
+# The `DecodeHashCodes` function is designed to decode numeric character
+# references in a given input string. It utilizes a regular expression to
+# identify patterns such as `&#65;` and replaces them with their corresponding
+# characters. The function achieves this through a helper function,
+# `replace_entity`, which extracts the numeric value from each match, converts
+# it to a character using the `chr` function, and returns the character. If the
+# conversion fails, it returns the original match. The main function then
+# applies this replacement process to the entire input string using `re.sub`,
+# ultimately returning the decoded string.
 
 @DF.function_trapper('')
 def DecodeHashCodes(input_string):
@@ -56,7 +113,14 @@ def DecodeHashCodes(input_string):
     entity_pattern = r'&#(\d+);'
     return re.sub(entity_pattern, replace_entity, input_string)
 
-# Turn \u codes to the proper ASCII
+# The `DecodeUnicode` function takes a string input `text` and replaces various
+# Unicode characters with their corresponding ASCII equivalents. It uses a
+# dictionary `replacements` to map Unicode characters, such as left and right
+# single quotation marks, double quotation marks, en dashes, em dashes,
+# ellipsis, and non-breaking spaces, to their ASCII counterparts. The function
+# iterates through this dictionary, replacing each occurrence of the specified
+# Unicode characters in the input text with the corresponding ASCII character,
+# ultimately returning the modified string with all replacements made.
 
 @DF.function_trapper('')
 def DecodeUnicode(text):
@@ -82,7 +146,15 @@ def DecodeUnicode(text):
         text = text.replace(unicode_char, ascii_char)
     return text
 
-# Get Yesterday's date
+# The `Yesterday` function calculates and returns the date of yesterday in the
+# format 'YYYY-MM-DD'. It takes an optional parameter `ds` which, if provided,
+# is expected to be a date string in the format 'YYYY-MM-DD' that is then used
+# as the reference date. If `ds` is not provided (i.e., it is `None`), the
+# function uses the current date as the reference. The function then subtracts
+# one day from the reference date to determine yesterday's date and returns it
+# as a string. However, there seems to be a bug in the function as it
+# references an undefined variable `date_str` instead of using the provided
+# `ds` parameter for parsing the date string.
 
 @DF.function_trapper('')
 def Yesterday(ds=None):
@@ -93,7 +165,12 @@ def Yesterday(ds=None):
     yesterday=date-datetime.timedelta(days=1)
     return yesterday.strftime('%Y-%m-%d')
 
-# Elastic Delay. This is designed to prevent the VPS from being overloaded
+# The `GetLoadAVG` function retrieves the system's current load average from
+# the `/proc/loadavg` file. It opens the file, reads the first line, and then
+# closes it. The line is then split into a list of values using spaces as
+# delimiters, which are stored in the `LoadAVG` variable. Finally, the function
+# returns this list of load average values, providing a snapshot of the
+# system's current workload.
 
 @DF.function_trapper([])
 def GetLoadAVG():
@@ -105,7 +182,16 @@ def GetLoadAVG():
 
     return(LoadAVG)
 
-# Convert load average to seconds
+# The `renice` function is a wrapper around the `os.setpriority` system call,
+# which is used to set the niceness of the current process. The function takes
+# a single argument `n`, representing the new niceness value, and attempts to
+# set it using `os.setpriority` with the `PRIO_PROCESS` option, targeting the
+# current process (identified by the pid `0`). If an error occurs during this
+# operation, the function silently ignores it and continues execution without
+# raising an exception, due to the bare `except: pass` block. The function is
+# also decorated with `@DF.function_trapper`, suggesting that it may be part of
+# a larger framework or library that provides additional functionality or error
+# handling.
 
 @DF.function_trapper
 def renice(n):
@@ -113,6 +199,17 @@ def renice(n):
         os.setpriority(os.PRIO_PROCESS,0,n)
     except:
         pass
+
+# The `ElasticSleep` function is designed to introduce a delay in the execution
+# of a program, with an optional "fuzzy" mode that adjusts the sleep duration
+# based on the system's current load. When `Fuzzy` is `True`, the function
+# calculates the system's load average and CPU count, and uses this information
+# to determine a dynamic sleep duration. If the load is high, it reduces the
+# process's priority and throttles the delay to prevent overloading the system.
+# The sleep duration is then calculated based on the load average, with an
+# additional throttle factor applied if the load exceeds the number of CPUs. If
+# `Fuzzy` is `False`, the function simply sleeps for a fixed duration specified
+# by the `s` parameter, without considering system load.
 
 @DF.function_trapper
 def ElasticSleep(s,Fuzzy=True):
@@ -150,7 +247,14 @@ def ElasticSleep(s,Fuzzy=True):
     else:
         time.sleep(s)
 
-# Returns milliseconds
+# The `ElasticDelay` function calculates a dynamic delay based on the system's
+# current load average and CPU count. It retrieves the load average using
+# `GetLoadAVG()` and determines the maximum value, which is then converted into
+# a delay in milliseconds. If the load average exceeds the number of available
+# CPUs, a throttle factor is applied to increase the delay, effectively slowing
+# down the system to prevent overload. The function returns the total delay,
+# which is the sum of the calculated delay and the throttle factor, allowing
+# for adaptive adjustment of timing based on system resource utilization.
 
 @DF.function_trapper(0)
 def ElasticDelay():
@@ -269,7 +373,14 @@ def GetWordList(text):
     words=text.lower().split()
     return [word for word in words if word.strip()]
 
-# Test STDIN if data is being piped in.
+# This function, `IsSTDIN`, checks if there is input available on the standard
+# input (STDIN) within a 1-second timeout. It uses the `select.select` method
+# to monitor the STDIN file descriptor for readability, and returns a list of
+# ready file descriptors. The function then returns this list, which will be
+# non-empty (`True` in a boolean context) if input is available, and empty
+# (`False` in a boolean context) otherwise. The `@DF.function_trapper(False)`
+# decorator suggests that this function is part of a larger framework or
+# library that provides error handling or other functionality.
 
 @DF.function_trapper(False)
 def IsSTDIN():

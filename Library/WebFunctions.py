@@ -2,8 +2,59 @@
 # -*- coding: utf-8 -*-
 #
 # Jackrabbit AI
-# 2021 Copyright © Robert APM Darin
+# 2021-2025 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
+
+# This Python code is a comprehensive toolkit designed to extract, process, and
+# analyze text content from various sources, including web pages, YouTube
+# videos, PDFs, and more. It also includes functionality to check the safety of
+# URLs by querying a database of known abusive IP addresses.
+
+# The code begins by importing numerous libraries and modules necessary for its
+# operations, such as handling web requests, parsing HTML, processing PDFs, and
+# managing YouTube transcripts. It also imports custom modules like
+# `DecoratorFunctions`, `CoreFunctions`, and `FileFunctions`, which likely
+# contain utility functions used throughout the script.
+
+# One of the key functions, `DecodeHashCodes`, is responsible for decoding
+# numeric character references (e.g., `&#65;`) in a string and replacing them
+# with their corresponding characters. This is useful for handling HTML
+# entities and ensuring text is properly formatted.
+
+# The `yttags2text` function extracts tags from a YouTube video by analyzing
+# its URL, fetching video details using the YouTube API, and returning the tags
+# as a list. If the video cannot be found or has no tags, it returns a
+# placeholder message.
+
+# `youtube2text` is another YouTube-related function that extracts and returns
+# the transcript of a YouTube video. It handles potential errors by retrying
+# the transcript fetch a specified number of times.
+
+# For PDF files, the `PDF2Text` function processes a PDF buffer, extracts text
+# from all pages, and returns it as a single string prefixed with "PDF
+# Content:".
+
+# The `ScrapingAnt` function uses the ScrapingAnt API to scrape content from a
+# specified URL. It reads API tokens, creates a ScrapingAnt client, and returns
+# the content of the response. If an error occurs, it returns `None`.
+
+# `StripHTML` is a utility function that takes an HTML string, removes various
+# HTML elements like `<head>`, `<script>`, and `<style>`, and extracts plain
+# text. It also removes extra whitespace and trims the text for a clean output.
+
+# The `html2text` function is a versatile tool that extracts text content from
+# a given URL. It handles different types of content, including YouTube
+# transcripts, PDFs, and standard web pages. Depending on the input, it uses
+# internal browser instances or external scraping services to fetch content. It
+# also offers customization options like `internal`, `external`, `userhome`,
+# and `raw` to tailor its behavior.
+
+# The script then introduces a set of functions related to identifying
+# potentially harmful links. `ExtractURLs` finds all URLs in a given text using
+# a regular expression. `Domain2IP` resolves a domain name to its IP address.
+# `ExtractDomains` extracts the domain from a URL. `CheckAbuseIPDB` checks if a
+# domain's IP address is reported as abusive on AbuseIPDB, a database of known
+# abusive IPs.
 
 import sys
 import os
@@ -30,7 +81,14 @@ import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
 
-# Decode hash symbols
+# The `DecodeHashCodes` function takes an input string and decodes any numeric
+# character references (e.g., `&#65;`) it contains, replacing them with their
+# corresponding characters. It uses a regular expression (`&#(\d+);`) to match
+# these references, and a nested function `replace_entity` to convert the
+# matched numeric values to characters using the `chr` function. If a
+# conversion fails (e.g., due to an invalid numeric value), the original match
+# is returned unchanged. The decoded string is then returned as the result,
+# effectively converting HTML entity codes to their corresponding characters.
 
 @DF.function_trapper(None)
 def DecodeHashCodes(input_string):
@@ -112,7 +170,6 @@ def yttags2text(url,userhome=None):
 @DF.function_trapper(None)
 def youtube2text(video_url,retry=3):
     # Extract the video ID from the URL
-    #video_id=video_url.split('v=')[1]
     video_id=re.search(r'(v=|be/|embed/|v/|youtu\.be/|\/videos\/|\/shorts\/|\/watch\?v=|\/watch\?si=|\/watch\?.*?&v=)([a-zA-Z0-9_-]{11})',video_url).group(2)
 
     # Fetch the transcript using the YouTubeTranscriptApi
@@ -148,7 +205,14 @@ def PDF2Text(pdf_buffer):
             text+=page.extract_text()
         return 'PDF Content: '+text
 
-# Call ScrapingAnt service to fetch web page
+# The `ScrapingAnt` function is designed to scrape content from a specified URL
+# using the ScrapingAnt API. It takes two parameters: `url` (the URL to be
+# scraped) and an optional `userhome` parameter, which defaults to `None`. The
+# function reads tokens from a file or storage using the `FF.ReadTokens`
+# method, then attempts to create a ScrapingAnt client instance with the
+# retrieved token. If successful, it sends a general request to the specified
+# URL and returns the content of the response. If any exception occurs during
+# this process, the function catches the error and returns `None`.
 
 @DF.function_trapper(None)
 def ScrapingAnt(url,userhome=None):
@@ -162,7 +226,16 @@ def ScrapingAnt(url,userhome=None):
         return None
     return result.content
 
-# Strip HTML code from buffer
+# The `StripHTML` function takes an HTML string (`htmlbuf`) as input and
+# removes various HTML elements to extract the plain text content. It first
+# removes the entire `<head>` section, followed by `<script>` and `<style>`
+# elements. Then, it reduces `<a>` elements to their text content, effectively
+# removing the hyperlink tags. After that, it removes all remaining HTML tags,
+# resulting in a plain text string. Finally, it replaces multiple whitespace
+# characters with a single space and trims any leading or trailing whitespace
+# before returning the extracted text. The function utilizes regular
+# expressions (`re.sub`) with the `DOTALL` flag to handle multiline matches and
+# ensure thorough removal of HTML elements.
 
 def StripHTML(htmlbuf):
     # Remove the entire head section
@@ -181,24 +254,57 @@ def StripHTML(htmlbuf):
     text=re.sub(r'\s+', ' ', text).strip()
     return text
 
-# The `html2text` function is used to fetch and convert the content of a
-# web page into plain text. First, it sets a user agent to mimic a browser
-# request to the given URL. If the URL points to a YouTube video, it
-# retrieves the video's transcript using the `youtube2text` function. For
-# other types of pages, it makes an HTTP request to fetch the HTML content.
-# The function handles errors gracefully, such as when a page is not found
-# or if there is an issue with the URL. It checks if the content is a PDF
-# and converts it to text if it is. Then, it processes the HTML by removing
-# the head section, script, and style elements, and strips out other
-# unnecessary HTML tags. The result is a cleaned-up, plain-text version of
-# the web page, with extra whitespace removed. The function prints the
-# length of the content fetched and returns it as a readable string.
+# The `html2text` function is a versatile tool designed to extract text content
+# from a given URL. It takes into account various scenarios, including YouTube
+# transcripts, PDF files, and standard web pages. The function accepts several
+# parameters, allowing users to customize its behavior according to their
+# needs. These parameters include `internal`, `external`, `userhome`, and
+# `raw`, which control how the function fetches and processes the HTML content.
 
-# internal selcts the internal method of reading a web page. If not internal, then the
-# function skips to Scraping Ant. This is useful for site that require cookies or
-# JavaScript (a serverless browser).
+# One of the key features of the `html2text` function is its ability to handle
+# different types of content. If the provided URL points to a YouTube video,
+# the function uses the `youtube2text` function to extract the transcript. For
+# other URLs, it attempts to fetch the HTML content using either an internal
+# browser instance (via Playwright) or an external scraping service
+# (ScrapingAnt). If the fetched content appears to be a PDF file (based on its
+# signature), the function converts it to text using the `PDF2Text` class. This
+# flexibility allows the function to adapt to various input scenarios, making
+# it a robust tool for text extraction.
 
-#@DF.function_trapper(None)
+# Once the HTML content is fetched and any necessary conversions are performed,
+# the function proceeds to parse it using BeautifulSoup. It removes script and
+# style tags from the HTML, as these do not contain relevant text content. The
+# remaining text is then extracted and stripped of unnecessary whitespace
+# characters. If the resulting text is empty, the function returns None,
+# indicating that no meaningful content could be extracted from the provided
+# URL. Otherwise, it normalizes the text by stripping spaces from each line and
+# removing empty lines, resulting in a cleaned and more readable version of the
+# original web page content.
+
+# The `html2text` function offers several customization options through its
+# parameters. The `internal` parameter controls whether an internal browser
+# instance should be used for fetching HTML content, while `external`
+# determines whether an external scraping service should be used as a fallback
+# if internal fetching fails. The `userhome` parameter can be used when
+# employing an external scraping service that requires this information for
+# proper operation. Finally, setting `raw` to True causes the function to
+# return only the raw HTML content without any parsing or processing, which can
+# be useful for specific use cases where further custom processing is needed.
+# These options allow users to tailor the behavior of the `html2text` function
+# according to their specific requirements or constraints.
+
+# The return value of the `html2text` function depends on its success in
+# extracting meaningful text from the provided URL. If successful, it returns a
+# string containing either raw HTML (if requested) or cleaned and normalized
+# text extracted from that HTML. In cases where no meaningful text can be
+# extracted (e.g., due to errors during fetching or parsing), or if specific
+# conditions are met (like encountering an empty page), it may return None or
+# other indicators of failure. Error handling within the function aims to catch
+# exceptions during these processes and gracefully degrade when necessary steps
+# cannot be completed successfully due to external factors like network errors
+# or unsupported formats.
+
+@DF.function_trapper(None)
 def html2text(url,internal=True,external=True,userhome=None,raw=False):
     # Set the user agent
     userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
@@ -231,7 +337,6 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
             if not html:
                 return None
             # Convert to bytes
-    #        html=html.encode('utf-8',errors='ignore')
             if not html:
                 return None
         else:
@@ -253,9 +358,6 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
     # When served raw, serve only html
     if raw:
         return html
-
-    # Strip the HTML
-#    text=StripHTML(html).strip()
 
     # Parse the HTML
     soup=BeautifulSoup(html,'html.parser')
@@ -288,10 +390,26 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
 # is flagged as dangerous, it’s marked as unsafe. This helps ensure that
 # harmful links can be quickly identified and dealt with.
 
+# The `ExtractURLs` function takes a string input `text` and returns a list of
+# all URLs found within it. It uses a regular expression pattern
+# (`url_pattern`) compiled with `re.compile`, which matches both HTTP and HTTPS
+# URLs by looking for strings that start with "http://" or "https://" and
+# continue until a whitespace character is encountered. The `findall` method of
+# the compiled pattern is then used to find all occurrences of this pattern in
+# the input text, and the resulting list of URLs is returned by the function.
+
 @DF.function_trapper
 def ExtractURLs(text):
     url_pattern=re.compile(r"https?://[^\s]+")
     return url_pattern.findall(text)
+
+# The `Domain2IP` function takes a domain name as input and attempts to resolve
+# it to its corresponding IP address using the `socket.gethostbyname` method.
+# If successful, it returns the IP address as a string. However, if any
+# exception occurs during this process, such as a DNS resolution failure or
+# network error, the function catches the exception but does not handle or log
+# it, and instead returns `None`, indicating that the domain could not be
+# resolved to an IP address.
 
 @DF.function_trapper
 def Domain2IP(domain):
@@ -302,10 +420,30 @@ def Domain2IP(domain):
         pass
     return None
 
+# The `ExtractDomains` function takes a URL as input and extracts the domain
+# from it. It utilizes the `urlparse` function to break down the URL into its
+# components, and then returns the `netloc` attribute, which contains the
+# network location (i.e., the domain) of the URL. This allows for easy
+# extraction of the domain name from a given URL, excluding any path, query
+# parameters, or other components. For example, if the input URL is
+# "https://www.example.com/path/to/page", the function would return
+# "www.example.com".
+
 @DF.function_trapper
 def ExtractDomains(url):
     parsed_url=urlparse(url)
     return parsed_url.netloc
+
+# The `CheckAbuseIPDB` function checks if a given domain's IP address is
+# reported as abusive on AbuseIPDB, a database of known abusive IP addresses.
+# It first converts the domain to an IP address using the `Domain2IP` function,
+# and if this fails, it returns `None` and `0`. The function then sends a GET
+# request to the AbuseIPDB API with the IP address and an API key stored in
+# tokens, which are read from a file using the `FF.ReadTokens` function. If the
+# request is successful, it parses the JSON response and returns `True` along
+# with an abuse confidence score if the IP address is reported as abusive, or
+# `False` and `0` otherwise. If any error occurs during the request, it catches
+# the exception, prints an error message, and returns `None` and `0`.
 
 @DF.function_trapper
 def CheckAbuseIPDB(domain,userhome=None):
@@ -331,4 +469,3 @@ def CheckAbuseIPDB(domain,userhome=None):
     except requests.exceptions.RequestException as e:
         print(f"Error checking AbuseIPDB: {e}")
         return None, 0
-

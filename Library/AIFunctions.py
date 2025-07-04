@@ -2,8 +2,52 @@
 # -*- coding: utf-8 -*-
 
 # Jackrabit AI
-# 2024 Copyright © Robert APM Darin
+# 2024-2025 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
+
+# This Python code defines a sophisticated system for managing interactions
+# with various AI models, focusing on memory management, tokenization, and
+# communication with multiple AI services. The core of the system is the
+# `Agent` class, which acts as a centralized manager for AI interactions,
+# handling memory storage, token limits, and responses from different AI
+# engines.
+
+# The `Agent` class is initialized with parameters that configure its behavior,
+# such as the AI engine, model, token limits, and memory settings. It includes
+# methods to set and adjust these parameters, ensuring flexibility in how the
+# AI is used. The class also manages storage locations for memory and timing
+# data, adapting to user-specific or default directories based on provided
+# inputs.
+
+# Memory management is a key feature, with methods to read, write, reset, and
+# maintain memory within token limits. The system stores conversation history
+# in a structured format, including metadata like the engine, model, and token
+# count for each message. It ensures that memory stays within a specified limit
+# by removing older messages when necessary, prioritizing recent and relevant
+# interactions.
+
+# The code includes a `JumpTable` method that acts as a dispatcher, routing
+# requests to the appropriate AI service based on the specified engine. It
+# supports a wide range of AI providers, including OpenAI, Cohere, Anthropic,
+# and others, each with its own method for generating responses. This modular
+# approach allows for easy integration of new AI services in the future.
+
+# The `Response` method is central to the system's functionality, handling user
+# input, memory updates, and interactions with the AI. It manages the entire
+# lifecycle of a request, from adding user input to memory, maintaining token
+# limits, sending requests to the AI, and storing the response. The method also
+# includes timing and logging features to track performance.
+
+# Tokenization is handled by the `GetTokenCount` method, which calculates the
+# number of tokens in a message based on the engine and model. This is crucial
+# for managing costs and ensuring compatibility with different AI services, as
+# each has its own tokenization method.
+
+# Overall, this code provides a robust framework for building AI-powered
+# applications, offering memory persistence, token management, and seamless
+# integration with multiple AI engines. It is designed to be adaptable,
+# efficient, and capable of handling complex conversational workflows while
+# maintaining a clear and organized structure.
 
 import sys
 import os
@@ -45,6 +89,20 @@ PersonaConfig="/home/JackrabbitAI/Personas"
 # Each memory item must record the engine ad model to get a proper token count.
 
 class Agent:
+
+    # This function, `__init__`, is a constructor method that initializes an
+    # object with various parameters related to AI engine configuration and
+    # functionality. It takes in numerous parameters, including the AI engine,
+    # model, maximum tokens, encoding, persona, user information, memory
+    # settings, and timing controls. The function sets these parameters as
+    # instance variables and performs some basic validation and default value
+    # assignments, such as setting the encoding to a specific value if the
+    # engine is 'openai' and no encoding is provided. Additionally, it calls a
+    # separate method `SetStorage` to configure storage settings based on user
+    # information. The initialized object appears to be designed to manage
+    # interactions with an AI API, controlling aspects such as memory usage,
+    # response timing, and isolation.
+
     def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False):
         self.engine=engine.lower()  # AI engine for a memory item (token count)
         self.model=model            # AI model being used
@@ -106,7 +164,17 @@ class Agent:
     def Timeout(self,timeout):
         self.timeout=timeout
 
-    # Set storage location for memory
+    # The `SetStorage` function is a method that sets the storage locations for
+    # memory and timing files within an object. It takes two optional
+    # parameters, `user` and `userhome`, which determine the directory where
+    # these files are stored. If `userhome` is provided, it overrides the
+    # default user system and sets the storage location to a directory within
+    # the specified path. Otherwise, the function checks if a `HOME`
+    # environment variable is defined and uses it to construct the storage
+    # path; if not, or if a `user` is specified, it defaults to a predefined
+    # directory structure under `/home/JackrabbitAI/Memory`. The function
+    # ensures the parent directory of the storage location exists by creating
+    # it if necessary using `FF.mkdir`.
 
     def SetStorage(self,user=None,userhome=None):
         # Set user and userhome
@@ -167,6 +235,17 @@ class Agent:
     def UpdateLast(self,role,data):
         self.Memory[-1][role]=data
 
+    # The `Read` function is designed to read data from a memory file located
+    # at `self.MemoryLocation`, if it exists. It reads the file line by line,
+    # attempting to parse each line as JSON data. If a line fails to parse, an
+    # error message is printed and the line is skipped. Successfully parsed
+    # lines are then processed to ensure they contain required fields such as
+    # 'engine', 'model', and 'encoding', which are populated with default
+    # values from the object's attributes if necessary. The function also
+    # calculates a 'tokens' value based on the content of the message, using
+    # the `GetTokenCount` method, and appends the processed data to the
+    # object's `Memory` list, excluding any system messages.
+
     def Read(self):
         # Read the memory file, if it exists.
         if os.path.exists(self.MemoryLocation):
@@ -190,6 +269,16 @@ class Agent:
                         mem['tokens']=self.GetTokenCount(mem['content'])
                     self.Memory.append(mem)
 
+    # The `Write` function is responsible for saving the contents of the
+    # `Memory` list to a file located at `MemoryLocation`. Before writing, it
+    # checks if there are any items in `Memory` and if a maximum memory limit
+    # (`MaxMemory`) has been set. If a limit is set and the number of items in
+    # `Memory` exceeds it, the function truncates `Memory` to only include the
+    # most recent items up to the limit. It then opens the memory file,
+    # iterates over each item in `Memory`, and writes it to the file in JSON
+    # format, excluding any items with a 'system' role. Finally, the function
+    # closes the file handle after all items have been written.
+
     def Write(self):
         # Do we have anything in memory?
         if self.Memory:
@@ -209,6 +298,16 @@ class Agent:
                     s=json.dumps(item)+'\n'
                     fh.write(s)
             fh.close()
+
+    # The `GetTokenCount` function calculates the number of tokens in a given
+    # input data based on the specified engine and model. It first determines
+    # which tokenizer to use depending on the engine, which can be 'openai',
+    # 'huggingface', 'googleai', or 'cohere', and then uses the corresponding
+    # tokenizer to encode the input data. The function then calculates the
+    # number of tokens in the encoded data, with different engines requiring
+    # different methods for tokenization, such as using `tiktoken` for 'openai'
+    # or `AutoTokenizer` for 'huggingface' and 'googleai'. Finally, it returns
+    # the calculated token count.
 
     def GetTokenCount(self,data):
         # Figure out which tokenizer to use.
@@ -291,7 +390,17 @@ class Agent:
 
         return NewMessages,current_tokens
 
-    # The AI jump table
+    # The `JumpTable` function is a method that appears to be part of a class,
+    # responsible for handling requests to various AI engines. It takes in
+    # several parameters, including `messages`, `engine`, `model`,
+    # `freqpenalty`, `temperature`, `timeout`, and optional parameters `seed`
+    # and `mt`. The function reads tokens from a file, then uses a series of
+    # if-elif statements to determine which AI engine to interact with based on
+    # the value of the `engine` parameter. Depending on the engine, it calls a
+    # corresponding method (e.g. `GetOpenAI`, `GetTogetherAI`, etc.) to
+    # retrieve a response and completion, handling exceptions by setting the
+    # response and completion to None if an error occurs. If the engine is not
+    # recognized, it also sets the response and completion to None.
 
     @DF.function_trapper(None)
     def JumpTable(self,messages,engine,model,freqpenalty,temperature,timeout,seed=0,mt=2048):
@@ -325,7 +434,52 @@ class Agent:
             self.response=None
             self.completion=None
 
-    # Get the AI Response. Also manages memory.
+    # The `Response` function is a crucial component of a conversational AI
+    # system. It takes in user input and generates a response based on the
+    # system's current state and configuration. The function is designed to
+    # manage the flow of information between the user, the AI model, and the
+    # system's memory.
+
+    # At the beginning of the function, it checks if the system needs to be
+    # reset. If so, it calls the `Reset` method to initialize the system. It
+    # also loads the system role only once, if a persona is specified and the
+    # memory is empty. Additionally, if the system is not in isolation mode, it
+    # reads any existing memory to ensure that the AI model has access to
+    # previous conversations or context.
+
+    # The function then adds the user's input to the memory using the `Put`
+    # method with a key of `'user'`. This allows the AI model to consider the
+    # user's input when generating a response. The function also maintains a
+    # token limit for the engine/model using the `MaintainTokenLimit` method.
+    # If this limit is exceeded, it sets `self.response` to `None` and returns
+    # immediately.
+
+    # If everything is in order, it sends messages to an AI service using its
+    # internal state (`wm`, `self.engine`, `self.model`, etc.) as parameters
+    # for its internal method called 'JumpTable'. After sending these messages
+    # off for processing by an external service (likely some sort of language
+    # model), this code then waits until said external operation completes
+    # before continuing onward within itself - specifically checking whether
+    # there was indeed any form output generated during such time via looking
+    # at variable named "response".
+
+    # If a response was generated by this point (i.e., not equaling None), said
+    # output gets added onto what seems like another form internal storage
+    # mechanism referred here under label 'assistant'. Furthermore updates
+    # occur relating last seen result plus saving entire interaction history
+    # should certain flag conditions ('save', 'isolation') evaluate True;
+    # otherwise nothing gets persisted across separate invocations made against
+    # same overall application context.
+
+    # Lastly worth mentioning here too would involve conditional inclusion
+    # timing related logging activities taking place right after successful
+    # receipt back from aforementioned services - logging entries including
+    # timestamps alongside specific details about models utilized during
+    # execution plus total processing times observed throughout entire request
+    # lifecycle up until current moment being recorded down into file located
+    # somewhere according path defined within TimingLocation class attribute
+    # belonging object instance itself where Response resides as method
+    # definition belonging thereto.
 
     @DF.function_trapper(None)
     def Response(self,input):
@@ -379,7 +533,18 @@ class Agent:
 
         return self.response
 
-    # Get OpenAI Response
+    # These functions appear are a collection of methods for interacting with
+    # various AI chat models, including OpenAI, x.ai, OpenRouter, Anthropic,
+    # Hugging Face, Together AI, Cohere, Ollama, and Perplexity. Each method
+    # takes in parameters such as an API key, messages to send to the model,
+    # the model to use, frequency penalty and temperature settings for
+    # generating responses, and a timeout value. The methods then use these
+    # parameters to create a client object for the respective AI service and
+    # send a request to generate a completion based on the provided messages.
+    # The response from the AI service is then processed and returned along
+    # with additional information about the completion. Overall, this code
+    # provides a unified interface for interacting with multiple AI chat
+    # services.
 
     @DF.function_trapper(None)
     def GetOpenAI(self,apikey,messages,model,freqpenalty,temperature,timeout):
@@ -556,13 +721,14 @@ class Agent:
             response+="\n\n"+"\n".join(f"<{url}>" for url in completion['citations'])
         return response,completion
 
-    # This function determines the appropriate configuration file for a companion bot
-    # based on whether the settings are for a specific channel or global and whether they
-    # are SFW (safe for work) or NSFW (not safe for work). It prioritizes NSFW
-    # channel-specific files, then SFW channel-specific files, followed by NSFW global
-    # files, and finally SFW global files. If none of these files exist, it falls back to
-    # the provided base filename to avoid potential errors in case the file is missing.
-    # This ensures the system can gracefully handle configuration scenarios without
+    # This function determines the appropriate configuration file for a
+    # companion bot based on whether the settings are for a specific channel or
+    # global and whether they are SFW (safe for work) or NSFW (not safe for
+    # work). It prioritizes NSFW channel-specific files, then SFW
+    # channel-specific files, followed by NSFW global files, and finally SFW
+    # global files. If none of these files exist, it falls back to the provided
+    # base filename to avoid potential errors in case the file is missing. This
+    # ensures the system can gracefully handle configuration scenarios without
     # crashing.
 
     @DF.function_trapper(None)
