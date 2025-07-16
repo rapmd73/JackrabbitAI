@@ -1,6 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# This Python script is designed to process and display information from a
+# specific file, which it expects to be provided when the script is run. The
+# script begins by checking if the necessary file has been supplied; if not, it
+# informs the user that a memory file is required and then stops running. This
+# ensures that the script only proceeds when it has the essential data it
+# needs.
+
+# Once the required file is confirmed, the script reads its contents and
+# prepares to work with the data inside. The file is expected to contain a
+# series of entries, each representing a piece of information or a "memory."
+# The script processes these entries one by one, attempting to interpret each
+# as a structured piece of data. If an entry cannot be properly understood due
+# to an error, the script simply moves on to the next one, ensuring that minor
+# issues do not halt the entire process.
+
+# For each valid entry, the script extracts and prepares the stored
+# information, specifically focusing on the content and associated details like
+# a role and token count. It then cleans up the content, ensuring it is
+# properly formatted for display. Finally, the script prints out the role,
+# token count, and the cleaned-up content for each entry, making it easy to
+# review the processed information. This structured output helps users quickly
+# understand the details of each memory stored in the file.
+
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import os

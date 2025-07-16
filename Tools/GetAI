@@ -2,8 +2,44 @@
 # -*- coding: utf-8 -*-
 
 # Jackrabit AI
-# 2024 Copyright © Robert APM Darin
+# 2024-2025 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
+
+# This Python script is designed to interact with an artificial intelligence
+# (AI) system, allowing users to send instructions and data to the AI and
+# receive responses. The script begins by setting up the necessary tools and
+# libraries it needs to function, including modules for handling files,
+# managing system operations, and working with JSON data. It also imports
+# custom functions from other files, which are organized into categories like
+# decorators, core functions, file handling, and AI-specific operations.
+
+# The script defines two main functions: `CheckArgs` and `main`. The
+# `CheckArgs` function is a helper tool that checks if a given argument is
+# present in a list of options, making it easier to process command-line
+# inputs. It converts both the argument and the list items to lowercase to
+# ensure the comparison is case-insensitive.
+
+# The `main` function is where the core logic resides. It starts by copying the
+# command-line arguments provided by the user. The script then sets default
+# values for memory management options, such as whether to reset or save
+# memory, and whether to operate in isolation without memory. It checks for
+# specific command-line flags (`-isolation`, `-reset`, `-nomemory`) to adjust
+# these settings accordingly. If a flag is found, it is removed from the
+# argument list to keep things tidy.
+
+# Next, the script verifies that the user has provided the necessary
+# information: an AI engine, a model, the maximum number of tokens, a persona,
+# and instructions (referred to as "role"). If any of these are missing, it
+# informs the user and exits. The role can be provided directly or as a file
+# path prefixed with `@`. If it’s a file, the script reads its contents,
+# ensuring it handles line breaks and quotes properly.
+
+# The script then checks if there is any input data provided via standard input
+# (STDIN). If so, it reads and processes this data similarly to the role
+# instructions. It initializes an AI agent using the provided engine, model,
+# token limit, persona, and memory settings. The agent is then used to generate
+# a response based on the combined role instructions and input data. Finally,
+# the script prints the AI's response to the user.
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
@@ -77,4 +113,3 @@ def main():
 
 if __name__=='__main__':
     main()
-

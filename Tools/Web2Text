@@ -1,6 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# This Python script is designed to take a web page URL as input and convert
+# its content into plain text. It starts by setting up the environment and
+# importing necessary tools from specific locations on the computer. These
+# tools are organized into two groups: one for handling files and another for
+# managing web-related tasks.
+
+# The script then checks if the user has provided any additional instructions
+# when running it. Specifically, it looks for a command that indicates whether
+# the output should include raw, unprocessed data. If this command is found,
+# the script makes a note to handle the data accordingly.
+
+# After verifying the user's instructions, the script ensures that a URL has
+# been provided. If not, it prompts the user to check their input and stops
+# running. Assuming a URL is given, the script proceeds to fetch the web page's
+# content, convert it from HTML format to plain text, and display the result.
+# The conversion process respects the user's preference for raw data if
+# specified.
+
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import os

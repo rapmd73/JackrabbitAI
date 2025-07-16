@@ -103,7 +103,7 @@ class Agent:
     # interactions with an AI API, controlling aspects such as memory usage,
     # response timing, and isolation.
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=3,retrytimeout=30):
         self.engine=engine.lower()  # AI engine for a memory item (token count)
         self.model=model            # AI model being used
         self.maxtokens=maxtokens    # Maximum number of tokens allowed for a given model
@@ -120,6 +120,8 @@ class Agent:
         self.reset=reset            # Do we reset the memory before the AI functionality?
         self.save=save              # Do we save any memory at all?
         self.isolation=isolation    # Are we wanting an isolated response (No memory?)
+        self.maxretries=retry       # Number of times to retry a request
+        self.retrytimeout=retrytimeout # Sleep between retries
         self.Memory=[]
 
         if self.engine=='openai' and self.encoding==None:
@@ -511,7 +513,13 @@ class Agent:
         # Send AI service the messages
 
         startTime=time.time()
-        self.JumpTable(wm,self.engine,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=self.maxtokens)
+        rc=0
+        self.response=None
+        while self.response==None or rc<self.maxretries:
+            self.JumpTable(wm,self.engine,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=self.maxtokens)
+            if self.response==None:
+                time.sleep(self.retrytimeout)
+            rc+=1
         endTime=time.time()
         if self.timing:
             FF.AppendFile(self.TimingLocation,f"{datetime.datetime.fromtimestamp(startTime).strftime('%Y-%m-%d %H:%M:%S')} {self.engine} {self.model} {endTime-startTime:.6f}\n")
