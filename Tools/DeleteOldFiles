@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Delete files older then X days
+# 2025 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
+# This Python script is designed to help manage file storage by automatically
+# removing files that are older than a specified number of days. Its primary
+# purpose is to keep directories organized and free up space by deleting
+# outdated files. The script begins by setting up the necessary tools and
+# libraries it needs to function, such as functions for handling file operations
+# and mechanisms to manage errors gracefully. It also establishes a way to
+# measure time, which is essential for determining how old a file is.
+
+# At the heart of the script is a function called `DeleteOldFiles`. This
+# function takes a directory path and an optional threshold, which defaults to
+# 31 days, as inputs. It first checks if the provided path is a valid directory.
+# If it is, the script examines each file within that directory, skipping any
+# files that start with a dot, as these are typically system or hidden files.
+# For each regular file, it checks the date when the file was last modified. If
+# the file’s last modification date is older than the specified threshold, the
+# script attempts to delete it. If the deletion is successful, it keeps track of
+# how many files were removed. If there’s an issue deleting a file, it displays
+# an error message.
+
+# The script includes a safety feature called a 'GuardRail,' which is a list of
+# critical system directories that should never be cleaned. Before processing
+# any directory, the script checks if it matches any of these protected paths.
+# If a match is found, the directory is skipped to prevent accidental deletion
+# of important system files.
+
+# The main part of the script is executed when the program is run directly. It
+# expects the user to provide two types of inputs: the number of days
+# (threshold) and one or more directory paths to clean. If the inputs are
+# missing, it informs the user and exits. It then processes each directory,
+# applying the `DeleteOldFiles` function and reporting how many files were
+# deleted from each location. This ensures the user is aware of the changes made
+# by the script. Additionally, there is an optional verbose mode that, when
+# enabled, lists directories even if no files were deleted, providing more
+# detailed feedback to the user.
+
+import sys
+sys.path.append('/home/JackrabbitAI/Library')
+import os
+import datetime
+import time
+
+import DecoratorFunctions as DF
+import FileFunctions as FF
+
+current_time=time.time()  # Get the current time in seconds
+
+@DF.function_trapper
+def DeleteOldFiles(directory,threshold=31*24*60*60):
+    if not os.path.isdir(directory):
+        return 0
+
+    c=0
+
+    # Loop through all files in the folder
+    for filename in os.listdir(directory):
+        # Ignore DOT files
+        if filename.startswith('.'):
+            continue
+
+        file_path = os.path.join(directory, filename)
+
+        # Only process files (not directories)
+        if os.path.isfile(file_path):
+            # Get the last modified time of the file
+            file_mod_time = os.path.getmtime(file_path)
+
+            # Check if the file is older than 24 hours
+            if current_time - file_mod_time > threshold:
+                try:
+                    os.remove(file_path)
+                    c+=1
+                except Exception as e:
+                    print(f"Failed to delete {filename}: {e}")
+    return c
+
+###
+### MAIN Driver
+###
+
+@DF.function_trapper
+def main():
+    GuardRail=['/bin','/boot','/dev','/etc','/lib','/lib64','/lost+found','/media','/mnt','/opt','/proc','/root','/run','/sbin','/snap','/srv','/sys','/usr','/var']
+
+    Verbose=False
+    for i in sys.argv[1:]:
+        if '-verbose' in i.lower():
+            sys.argv.remove(i)
+            Verbose=True
+
+    if len(sys.argv)<3:
+        print("Missing theshold (in days)")
+        print("Missing one or more directories")
+        print("[OPTIONAL] -Verbose to list directory, even if no deletion")
+        sys.exit(1)
+
+    # Threshold is in DAYS
+    try:
+        threshold=int(sys.argv[1])*24*60*60
+    except:
+        print("Make sure Threshold is a number")
+        sys.exit(1)
+
+    if threshold<1:
+        print("Threshold MUST be at least 1 day")
+        sys.exit(1)
+
+    for d in sys.argv[2:]:
+        skip=False
+        for g in GuardRail:
+            if g in d:
+                print(f"Skipping {d}")
+                skip=True
+                break
+        if skip:
+            continue
+        c=DeleteOldFiles(d,threshold=threshold)
+        if c>0 or Verbose:
+            print(f"{c:5} {d}")
+
+if __name__=='__main__':
+    main()
+
+###
+### END Program
+###
+
