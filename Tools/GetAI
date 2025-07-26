@@ -69,7 +69,14 @@ def main():
     ResetMemory=False
     SaveMemory=True
     NoMemory=False
+    maxresp=0
 
+    if CheckArgs('-maxrespsize',args):
+        idx=args.index('-maxrespsize')
+        args.remove('-maxrespsize')
+        if idx < len(args):
+            maxresp=int(args[idx])  # Get max characters
+            args.pop(idx)
     if CheckArgs('-isolation',args):
         NoMemory=True
         args.remove('-isolation')
@@ -104,7 +111,7 @@ def main():
     if CF.IsSTDIN():
         input=sys.stdin.read().replace('\n','\\n').replace('"',"'")
 
-    agent=AI.Agent(engine=engine,model=model,maxtokens=mt,persona=persona,reset=ResetMemory,save=SaveMemory,isolation=NoMemory)
+    agent=AI.Agent(engine=engine,model=model,maxtokens=mt,persona=persona,reset=ResetMemory,save=SaveMemory,isolation=NoMemory,maxrespsize=maxresp)
 
     # Get the response from the AI
 

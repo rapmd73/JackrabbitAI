@@ -103,7 +103,7 @@ class Agent:
     # interactions with an AI API, controlling aspects such as memory usage,
     # response timing, and isolation.
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=3,retrytimeout=30):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37):
         self.engine=engine.lower()  # AI engine for a memory item (token count)
         self.model=model            # AI model being used
         self.maxtokens=maxtokens    # Maximum number of tokens allowed for a given model
@@ -122,6 +122,9 @@ class Agent:
         self.isolation=isolation    # Are we wanting an isolated response (No memory?)
         self.maxretries=retry       # Number of times to retry a request
         self.retrytimeout=retrytimeout # Sleep between retries
+        self.maxrespsize=maxrespsize # Some models are prone to "dictionary dumps", reject any response larger then this. 0=no rejection
+        self.maxrespretry=maxrespretry # Number of time to retry size rejection
+        self.maxrespretrytimeout=maxrespretrytimeout # Number of seconds to wait between retries
         self.Memory=[]
 
         if self.engine=='openai' and self.encoding==None:
@@ -483,7 +486,7 @@ class Agent:
     # belonging object instance itself where Response resides as method
     # definition belonging thereto.
 
-    @DF.function_trapper(None)
+#    @DF.function_trapper(None)
     def Response(self,input):
         # Reset the memory if needed
 
@@ -514,12 +517,34 @@ class Agent:
 
         startTime=time.time()
         rc=0
+        msr=0
         self.response=None
-        while self.response==None or rc<self.maxretries:
+        while self.response==None:
             self.JumpTable(wm,self.engine,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=self.maxtokens)
+
+            # main retry level
             if self.response==None:
                 time.sleep(self.retrytimeout)
-            rc+=1
+                msr=0   # Reset the size counter
+                if rc<self.maxretries:
+                    rc+=1
+                else:
+                    break
+
+            # Response size limitation check
+            if self.maxrespsize>0 and len(self.response)>self.maxrespsize:
+                print(len(self.response),msr,rc)
+                time.sleep(self.maxrespretrytimeout)
+                if msr<self.maxrespretry:
+                    msr+=1
+                else:
+                    msr=0   # Reset the size counter
+                    if rc<self.maxretries:
+                        self.response=None
+                        rc+=1
+                    else:
+                        break
+
         endTime=time.time()
         if self.timing:
             FF.AppendFile(self.TimingLocation,f"{datetime.datetime.fromtimestamp(startTime).strftime('%Y-%m-%d %H:%M:%S')} {self.engine} {self.model} {endTime-startTime:.6f}\n")
