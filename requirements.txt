@@ -6,6 +6,7 @@ ollama
 openai
 together
 cohere
+google-generativeai
 huggingface_hub
 anthropic
 transformers

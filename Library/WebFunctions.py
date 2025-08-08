@@ -304,8 +304,8 @@ def StripHTML(htmlbuf):
 # cannot be completed successfully due to external factors like network errors
 # or unsupported formats.
 
-@DF.function_trapper(None)
-def html2text(url,internal=True,external=True,userhome=None,raw=False):
+#@DF.function_trapper(None)
+def html2text(url,external=False,userhome=None,raw=False):
     # Set the user agent
     userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
     headers={'User-Agent': userAgent}
@@ -318,8 +318,12 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
     # Not a YouTube transcript, Fetch the HTML content from the URL
 
     html=None
-    if internal:
+    if external==True:
+        html=ScrapingAnt(url,userhome=userhome)
+    else:
         try:
+            # If this breaks, run: playwright install
+            # needs to be done after EVERY update.
             with sync_playwright() as p:
                 browser = p.chromium.launch()
                 context = browser.new_context(user_agent=userAgent)
@@ -331,16 +335,10 @@ def html2text(url,internal=True,external=True,userhome=None,raw=False):
         except Exception as err:
             html=None
 
+    # Something really broke not to get anything.
+
     if not html:
-        if external==True:
-            html=ScrapingAnt(url,userhome=userhome)
-            if not html:
-                return None
-            # Convert to bytes
-            if not html:
-                return None
-        else:
-            return None
+        return None
 
     # Check for PDF signature
     if html and html[:5]=='%PDF-':

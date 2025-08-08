@@ -27,14 +27,18 @@ import FileFunctions as FF
 import WebFunctions as WF
 
 raw=False
+external=False
+
 if len(sys.argv)>2:
     if '-raw' in sys.argv:
         sys.argv.remove('-raw')
         raw=True
+    if '-external' in sys.argv:
+        sys.argv.remove('-external')
+        external=True
 
 if len(sys.argv)<2:
     print("Please verify URL...")
     sys.exit(1)
 
-print(WF.html2text(sys.argv[1],raw=raw))
-
+print(WF.html2text(sys.argv[1],raw=raw,external=external))

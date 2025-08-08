@@ -87,10 +87,22 @@ def main():
         SaveMemory=False
         args.remove('-nomemory')
 
+# export JRAIengine="GoogleAI"
+# export JRAImodel="gemini-2.5-flash-lite"
+# export JRAItokens=256000
+
     if len(args)>5:
         engine=args[1]
+        if engine.lower()=='default':
+            engine=os.getenv('JRAIengine')
         model=args[2]
-        mt=int(args[3])
+        if model.lower()=='default':
+            model=os.getenv('JRAImodel')
+        mt=args[3]
+        if mt.lower()=='default':
+            mt=int(os.getenv('JRAItokens'))
+        else:
+            mt=int(mt)
         persona=args[4]
         role=args[5]
     else:

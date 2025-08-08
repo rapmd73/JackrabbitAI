@@ -73,6 +73,7 @@ import huggingface_hub
 import anthropic
 from transformers import AutoTokenizer
 from googleapiclient.discovery import build
+import google.generativeai as genai
 
 import DecoratorFunctions as DF
 import CoreFunctions as CF
@@ -321,7 +322,7 @@ class Agent:
                 enc=tiktoken.get_encoding(self.encoding)
             else:
                 enc=tiktoken.get_encoding(tiktoken.model.MODEL_TO_ENCODING[self.model])
-        elif self.engine=='huggingface' or self.engine=='googleai':
+        elif self.engine=='huggingface':
             enc=AutoTokenizer.from_pretrained(self.model)
         elif self.engine=='cohere':
             Tokens=FF.ReadTokens(userhome=self.userhome)
@@ -332,8 +333,9 @@ class Agent:
             current_tokens=len(enc.encode(data))
         elif self.engine=='huggingface':
             current_tokens=len(enc(data)["input_ids"])
-        elif self.engine=='cohere':
-            current_tokens=len(enc.tokenize(text=data,model=self.model,offline=False).tokens)
+        # SOMETHING BROKE IS THEIR SYSTEM
+#        elif self.engine=='cohere':
+#            current_tokens=len(enc.tokenize(text=data,model=self.model,offline=False).tokens)
         else:
             current_tokens=int((len(data)+24)/4)
 
@@ -415,14 +417,16 @@ class Agent:
         try:
             if self.engine=='openai':
                 self.response,self.completion=self.GetOpenAI(Tokens['OpenAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='togetherai':
-                self.response,self.completion=self.GetTogetherAI(Tokens['TogetherAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='cohere':
-                self.response,self.completion=self.GetCohere(Tokens['Cohere'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='ollama':
-                self.response,self.completion=self.GetOllama(Tokens['Ollama'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=mt)
+            elif self.engine=='googleai':
+               self.response,self.completion=self.GetGoogleAI(Tokens['GoogleAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='xai':
                self.response,self.completion=self.GetxAI(Tokens['xAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+            elif self.engine=='cohere':
+                self.response,self.completion=self.GetCohere(Tokens['Cohere'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+            elif self.engine=='togetherai':
+                self.response,self.completion=self.GetTogetherAI(Tokens['TogetherAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+            elif self.engine=='ollama':
+                self.response,self.completion=self.GetOllama(Tokens['Ollama'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=mt)
             elif self.engine=='openrouter':
                self.response,self.completion=self.GetOpenRouter(Tokens['OpenRouter'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='anthropic':
@@ -533,7 +537,6 @@ class Agent:
 
             # Response size limitation check
             if self.maxrespsize>0 and len(self.response)>self.maxrespsize:
-                print(len(self.response),msr,rc)
                 time.sleep(self.maxrespretrytimeout)
                 if msr<self.maxrespretry:
                     msr+=1
@@ -614,6 +617,78 @@ class Agent:
         clientAI.close()
         response=completion.choices[0].message.content.strip()
         return response,completion
+
+    @DF.function_trapper(None)
+    def GetGoogleAI(self,apikey,messages,model,freqpenalty,temperature,timeout,openai=False):
+        # Sub functions
+        def PrepareGeminiHistory(messages):
+            # (Conversion function remains the same)
+            gemini_messages = []
+            system_instruction = None
+            for message in messages:
+                role = message.get("role")
+                content = message.get("content")
+                if role == "system":
+                    system_instruction = content
+                elif role == "user":
+                    gemini_messages.append({"role": "user", "parts": [content]})
+                elif role == "assistant":
+                    gemini_messages.append({"role": "model", "parts": [content]})
+            return system_instruction, gemini_messages
+
+        # function code
+
+        safety_settings=[
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}]
+
+        if openai==True:
+            # Works exceptionally well but does not allow disabiling the safety settings
+            clientAI=openai.OpenAI(api_key=apikey,base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+
+            try:
+                completion=clientAI.chat.completions.create(
+                        model=model,
+                        frequency_penalty=freqpenalty,
+                        temperature=temperature,
+                        messages=messages,
+                        timeout=timeout
+                    )
+            except:
+                completion=clientAI.chat.completions.create(
+                        model=model,
+                        temperature=temperature,
+                        messages=messages,
+                        timeout=timeout
+                    )
+            clientAI.close()
+            response=completion.choices[0].message.content.strip()
+            return response,completion
+        else:
+            # Use Gemini native code
+            sysmsg,history=PrepareGeminiHistory(messages)
+            if sysmsg==None:
+                sysmsg="You are a helpful assistant"
+
+            if model=='gemini-2.5-flash-lite':
+                gencfg=genai.GenerationConfig(temperature=temperature)
+            else:
+                gencfg=genai.GenerationConfig(temperature=temperature,frequency_penalty=freqpenalty)
+
+            genai.configure(api_key=apikey)
+            model = genai.GenerativeModel(
+                model_name=model,
+                system_instruction=sysmsg,
+                safety_settings=safety_settings,
+                generation_config=gencfg)
+            chat=model.start_chat(history=history)
+
+            prompt=history[-1]['parts'][0]
+            completion=chat.send_message(prompt)
+            response=completion.text
+            return response,completion
 
     @DF.function_trapper(None)
     def GetOpenRouter(self,apikey,messages,model,freqpenalty,temperature,timeout):
