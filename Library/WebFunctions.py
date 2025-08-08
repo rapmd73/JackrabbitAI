@@ -177,10 +177,12 @@ def youtube2text(video_url,retry=3):
     c=0
     while c<retry:
         try:
-            transcript_list=youtube_transcript_api.YouTubeTranscriptApi.get_transcript(video_id)
+            ytt_api=youtube_transcript_api.YouTubeTranscriptApi()
+            transcript_list=ytt_api.fetch(video_id)
+
             c=retry+1
         except Exception as err:
-            #print("ERROR",err)
+            print("ERROR",err)
             time.sleep(3)
         c+=1
 
@@ -188,7 +190,10 @@ def youtube2text(video_url,retry=3):
         return None
 
     # Use the TextFormatter to convert the transcript into plain text
-    transcript_text='\n'.join(line['text'] for line in transcript_list)
+
+    transcript_text=''
+    for snippet in transcript_list:
+        transcript_text+=snippet.text+'\n'
 
     return 'Video Transcript: '+transcript_text
 
