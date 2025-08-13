@@ -105,6 +105,7 @@ class Agent:
     # response timing, and isolation.
 
     def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37):
+        self.AIError=False          # Error in the AI engine, breaks retry
         self.engine=engine.lower()  # AI engine for a memory item (token count)
         self.model=model            # AI model being used
         self.maxtokens=maxtokens    # Maximum number of tokens allowed for a given model
@@ -523,8 +524,13 @@ class Agent:
         rc=0
         msr=0
         self.response=None
+        self.AIError=False
         while self.response==None:
             self.JumpTable(wm,self.engine,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=self.maxtokens)
+
+            # AI error, such as prohibited content, breaks retry loop
+            if self.AIError:
+                break
 
             # main retry level
             if self.response==None:
@@ -593,6 +599,11 @@ class Agent:
                 timeout=timeout
             )
         clientAI.close()
+
+        stop=completion.choices[0].finish_reason
+        if stop.lower()=='safety':
+            self.AIError=True
+
         response=completion.choices[0].message.content.strip()
         return response,completion
 
@@ -615,6 +626,11 @@ class Agent:
                     timeout=timeout
                 )
         clientAI.close()
+
+        stop=completion.choices[0].finish_reason
+        if stop.lower()=='safety':
+            self.AIError=True
+
         response=completion.choices[0].message.content.strip()
         return response,completion
 
@@ -664,6 +680,12 @@ class Agent:
                         timeout=timeout
                     )
             clientAI.close()
+
+            stop=completion.choices[0].finish_reason
+
+            if stop.lower()=='safety':
+                self.AIError=True
+
             response=completion.choices[0].message.content.strip()
             return response,completion
         else:
@@ -687,6 +709,11 @@ class Agent:
 
             prompt=history[-1]['parts'][0]
             completion=chat.send_message(prompt)
+
+            # STOP is the regular finish reason when no errors
+            if completion.candidates and completion.candidates[0].finish_reason.name.lower()!="stop":
+                self.AIError=True
+
             response=completion.text
             return response,completion
 
@@ -701,6 +728,11 @@ class Agent:
                 timeout=timeout
             )
         clientAI.close()
+
+        stop=completion.choices[0].finish_reason
+        if stop.lower()=='safety':
+            self.AIError=True
+
         response=completion.choices[0].message.content.strip()
         return response,completion
 
@@ -721,6 +753,7 @@ class Agent:
                 stream=False
             )
         clientAI.close()
+
         response=completion.content[0].text.strip()
         return response,completion
 
@@ -734,7 +767,11 @@ class Agent:
                 messages=messages,
                 stream=False
             )
-    #    stop=completion.choices[0].finish_reason
+
+        stop=completion.choices[0].finish_reason
+        if stop.lower()=='safety':
+            self.AIError=True
+
         response=completion.choices[0].message.content.strip()
         return response,completion
 
@@ -748,6 +785,11 @@ class Agent:
                 messages=messages,
                 stream=False
             )
+
+        stop=completion.choices[0].finish_reason
+        if stop.lower()=='safety':
+            self.AIError=True
+
         response=completion.choices[0].message.content.strip()
         return response,completion
 
