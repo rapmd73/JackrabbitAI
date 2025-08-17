@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+from datetime import datetime
+
+def count_files_by_date(directory):
+    file_counts = {}
+
+    for root, _, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            mod_time = os.path.getmtime(file_path)
+            mod_date = datetime.fromtimestamp(mod_time).date()
+
+            if mod_date in file_counts:
+                file_counts[mod_date] += 1
+            else:
+                file_counts[mod_date] = 1
+
+    s=0
+    for date in sorted(file_counts):
+        s+=file_counts[date]
+        print(f"{date}: {file_counts[date]} files")
+    print(f"Average daily count: {int(s/len(file_counts))}")
+
+if __name__ == "__main__":
+    if len(sys.argv)<2:
+        print("A directory is required")
+        sys.exit(0)
+
+    count_files_by_date(sys.argv[1])
+

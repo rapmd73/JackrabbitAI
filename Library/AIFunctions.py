@@ -104,8 +104,9 @@ class Agent:
     # interactions with an AI API, controlling aspects such as memory usage,
     # response timing, and isolation.
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False):
         self.AIError=False          # Error in the AI engine, breaks retry
+        self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
         self.engine=engine.lower()  # AI engine for a memory item (token count)
         self.model=model            # AI model being used
         self.maxtokens=maxtokens    # Maximum number of tokens allowed for a given model
@@ -117,8 +118,9 @@ class Agent:
         self.timeout=timeout        # Timeout for connection to take place
         self.timing=timing          # Are we timing the AI api call?
         self.persona=persona        # the AI persona
-        self.completion=None
-        self.response=None
+        self.completion=None        # The total return payload
+        self.response=None          # The response
+        self.stop=None              # The stop reason for the request
         self.reset=reset            # Do we reset the memory before the AI functionality?
         self.save=save              # Do we save any memory at all?
         self.isolation=isolation    # Are we wanting an isolated response (No memory?)
@@ -419,7 +421,7 @@ class Agent:
             if self.engine=='openai':
                 self.response,self.completion=self.GetOpenAI(Tokens['OpenAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='googleai':
-               self.response,self.completion=self.GetGoogleAI(Tokens['GoogleAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+               self.response,self.completion=self.GetGoogleAI(Tokens['GoogleAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,UseOpenAI=self.UseOpenAI)
             elif self.engine=='xai':
                self.response,self.completion=self.GetxAI(Tokens['xAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='cohere':
@@ -600,8 +602,8 @@ class Agent:
             )
         clientAI.close()
 
-        stop=completion.choices[0].finish_reason
-        if stop.lower()=='safety':
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
             self.AIError=True
 
         response=completion.choices[0].message.content.strip()
@@ -627,15 +629,15 @@ class Agent:
                 )
         clientAI.close()
 
-        stop=completion.choices[0].finish_reason
-        if stop.lower()=='safety':
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
             self.AIError=True
 
         response=completion.choices[0].message.content.strip()
         return response,completion
 
     @DF.function_trapper(None)
-    def GetGoogleAI(self,apikey,messages,model,freqpenalty,temperature,timeout,openai=False):
+    def GetGoogleAI(self,apikey,messages,model,freqpenalty,temperature,timeout,UseOpenAI=False):
         # Sub functions
         def PrepareGeminiHistory(messages):
             # (Conversion function remains the same)
@@ -660,7 +662,7 @@ class Agent:
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}]
 
-        if openai==True:
+        if UseOpenAI==True:
             # Works exceptionally well but does not allow disabiling the safety settings
             clientAI=openai.OpenAI(api_key=apikey,base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
@@ -681,9 +683,8 @@ class Agent:
                     )
             clientAI.close()
 
-            stop=completion.choices[0].finish_reason
-
-            if stop.lower()=='safety':
+            self.stop=completion.choices[0].finish_reason.lower()
+            if self.stop!='stop':
                 self.AIError=True
 
             response=completion.choices[0].message.content.strip()
@@ -712,9 +713,12 @@ class Agent:
 
             # STOP is the regular finish reason when no errors
             if completion.candidates and completion.candidates[0].finish_reason.name.lower()!="stop":
+                self.stop=completion.candidates[0].finish_reason.name.lower()
                 self.AIError=True
+                response=None
+            else:
+                response=completion.text
 
-            response=completion.text
             return response,completion
 
     @DF.function_trapper(None)
@@ -729,8 +733,8 @@ class Agent:
             )
         clientAI.close()
 
-        stop=completion.choices[0].finish_reason
-        if stop.lower()=='safety':
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
             self.AIError=True
 
         response=completion.choices[0].message.content.strip()
@@ -754,6 +758,11 @@ class Agent:
             )
         clientAI.close()
 
+        if completion.stop_reason:
+            self.stop=completion.stop_reason.lower()
+            if self.stop not in ("end_turn", "stop_sequence"):
+                self.AIError = True
+
         response=completion.content[0].text.strip()
         return response,completion
 
@@ -768,8 +777,8 @@ class Agent:
                 stream=False
             )
 
-        stop=completion.choices[0].finish_reason
-        if stop.lower()=='safety':
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
             self.AIError=True
 
         response=completion.choices[0].message.content.strip()
@@ -786,8 +795,8 @@ class Agent:
                 stream=False
             )
 
-        stop=completion.choices[0].finish_reason
-        if stop.lower()=='safety':
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop=='stop':
             self.AIError=True
 
         response=completion.choices[0].message.content.strip()
@@ -804,7 +813,14 @@ class Agent:
                     messages=messages,
                     safety_mode=safemode
                 )
+
+            if completion.finish_reason:
+                self.stop=completion.finish_reason.lower()
+                if self.stop!="complete":
+                    self.AIError=True
+
             response=completion.message.content[0].text.strip()
+
             return response,completion
 
         # Not all model allow unfilitered access
@@ -859,6 +875,10 @@ class Agent:
         # Check if the request was successful
         if response.status_code==200:
             completion=response.json()
+
+        self.stop=completion["choices"][0].get("finish_reason", "").lower()
+        if self.stop!="stop":
+            self.AIError=True
 
         response=completion["choices"][0]["message"]["content"].strip()
 
