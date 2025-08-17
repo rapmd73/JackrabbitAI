@@ -712,8 +712,8 @@ class Agent:
             completion=chat.send_message(prompt)
 
             # STOP is the regular finish reason when no errors
-            if completion.candidates and completion.candidates[0].finish_reason.name.lower()!="stop":
-                self.stop=completion.candidates[0].finish_reason.name.lower()
+            self.stop=completion.candidates[0].finish_reason.name.lower()
+            if self.stop!="stop":
                 self.AIError=True
                 response=None
             else:
