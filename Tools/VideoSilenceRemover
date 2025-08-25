@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Jackrabit AI
+# 2024-2025 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
+# This Python code is designed to help users remove silent
+# sections from video files. It begins with some basic metadata,
+# including the author's name and copyright information, followed
+# by importing necessary libraries that facilitate audio
+# processing and video manipulation. The code utilizes a library
+# called MoviePy, which is specifically tailored for video
+# editing tasks. The overall goal of the script is to analyze the
+# audio track of a given video file, identify segments where
+# there is no sound, and then create a new version of the video
+# that omits these silent parts.
+
+# At the heart of this script are several functions that work
+# together to achieve its purpose. One function converts root
+# mean square (RMS) values into decibels, which helps in
+# determining whether a particular segment of audio can be
+# classified as silent based on a specified threshold. Another
+# function scans through the audio data in chunks to detect
+# non-silent segments based on user-defined parameters such as
+# silence duration and padding around detected sounds. This
+# process involves calculating RMS values for small portions of
+# audio and comparing them against the silence threshold to
+# decide if they should be included in the final output.
+
+# The main part of the script handles user input and orchestrates
+# the overall workflow. It checks if sufficient arguments are
+# provided when running the program from a command line
+# interface; these arguments include paths for input and output
+# files along with optional parameters for silence detection
+# settings. If any optional parameters are not specified by
+# users, default values are applied instead. After gathering all
+# necessary information, it calls upon another function
+# responsible for processing the video file—extracting its audio
+# track, detecting non-silent segments using previously defined
+# logic, and finally creating an edited version of the original
+# video without those silent sections.
+
+# Max Headroom Stuttering effect
+
+# Here's how the "Max Headroom" stuttering effect can happen,
+# explained simply:
+
+# Imagine you're editing a video and you have two main settings:
+
+# 1.  **Minimum Silence Length:** This is like saying, "I want to
+# cut out any pause that's *at least* this long." If you set this
+# to, say, 800 milliseconds (a little less than a second), any
+# pause shorter than that will be kept.
+
+# 2.  **Padding:** This is like adding a little bit of "breathing
+# room" before and after a sound. If you set padding to 150
+# milliseconds, the script will keep 150 milliseconds of audio
+# *before* a sound starts and 150 milliseconds *after* it ends.
+# This makes the transitions smoother, so you don't cut off the
+# very beginning or end of someone's words.
+
+# **The "Max Headroom" Stuttering Problem:**
+
+# The problem arises when these two settings are out of balance,
+# specifically when **padding is longer than the minimum silence
+# length**.
+
+# Let's say:
+
+# **Minimum Silence Length:** 300 milliseconds (a short pause)
+
+# **Padding:** 500 milliseconds (a longer buffer around sounds)
+
+# Now, think about how the script tries to find what to keep:
+
+# 1.  It looks for sounds.
+
+# 2.  When it finds a sound, it decides to keep 500ms *before* it
+# and 500ms *after* it.
+
+# 3.  It then looks for the *next* silence. If it finds a silence
+# that's *shorter* than 300ms, it will ignore it because it's not
+# long enough to be considered "silence" for cutting.
+
+# **Here's where the jankiness happens:**
+
+# Because the padding (500ms) is longer than the minimum silence
+# it's allowed to cut (300ms), the script can get confused. It
+# might try to keep a segment of audio, then add 500ms of padding
+# *after* it. But if the next actual sound starts *before* that
+# 500ms padding is over, the script might try to overlap these
+# sections.
+
+# **Think of it like this:**
+
+# You're trying to cut out a short pause between two sentences.
+
+# **Sentence A** ends.
+
+# The script adds 500ms of "padding" after Sentence A.
+
+# Then, **Sentence B** starts, but it starts only 300ms after
+# Sentence A ended.
+
+# Because the padding (500ms) is longer than the actual silence
+# (300ms), the script gets confused. It's trying to hold onto
+# that extra 200ms of "padding" from Sentence A, but Sentence B
+# is already starting.
+
+# This can lead to:
+
+# **Audio Overlap:** You might hear the end of Sentence A and
+# the beginning of Sentence B playing at the same time, or the
+# beginning of Sentence B repeating.
+
+# **Visual Stuttering:** The video frames that correspond to
+# these overlapping audio moments might also repeat or jump,
+# making the video look jerky and unnatural.
+
+# It's like trying to stitch two pieces of fabric together, but
+# one piece is too long for the gap you're trying to fill. The
+# extra fabric bunches up, creating a messy, stuttering effect.
+# This is why the default settings are often balanced, to avoid
+# this "Max Headroom" kind of glitch.
+
+import sys
+import numpy as np
+from moviepy import VideoFileClip, concatenate_videoclips
+
+def rms_to_dbfs(rms):
+    if rms <= 0:
+        return -float("inf")
+    return 20 * np.log10(rms)
+
+def detect_nonsilent(audio_array, sr, silence_thresh_db=-40.0, min_silence_len_ms=800, padding_ms=150):
+    step=int(0.05 * sr)  # 50ms step
+    silence_required=(min_silence_len_ms / 1000.0) * sr
+    padding=padding_ms / 1000.0
+
+    non_silent=[]
+    silence_count=0
+    start=None
+
+    for i in range(0, len(audio_array), step):
+        chunk=audio_array[i:i+step]
+        rms=np.sqrt(np.mean(chunk**2)) if len(chunk)>0 else 0
+        db=rms_to_dbfs(rms)
+        t=i / sr
+
+        if db>silence_thresh_db:
+            if start is None:
+                start=t
+            silence_count=0
+        else:
+            silence_count += step
+            if start is not None and silence_count >= silence_required:
+                end=t
+                s=max(0, start - padding)
+                e=min(len(audio_array)/sr, end + padding)
+                non_silent.append((s, e))
+                start=None
+
+    if start is not None:
+        end=len(audio_array) / sr
+        non_silent.append((max(0, start - padding), end))
+
+    return non_silent
+
+def remove_silence(video_path, output_path, absolute_thresh_db=-40.0, min_silence_len_ms=800, padding_ms=150):
+    video=VideoFileClip(video_path)
+    audio=video.audio.to_soundarray(fps=44100)
+    sr=44100
+
+    if audio.ndim>1:
+        audio=np.mean(audio, axis=1)
+
+    print(f"Using absolute silence threshold: {absolute_thresh_db:.2f} dBFS")
+
+    nonsilent=detect_nonsilent(audio, sr, absolute_thresh_db, min_silence_len_ms, padding_ms)
+
+    if nonsilent:
+        print("Detected non-silent segments (seconds):")
+        for seg in nonsilent:
+            print(f"  {seg[0]:.2f} – {seg[1]:.2f}")
+
+        clips=[video.subclipped(start, end) for start, end in nonsilent]
+        final=concatenate_videoclips(clips)
+        final.write_videofile(output_path, codec="libx264", audio_codec="aac")
+    else:
+        print("No non-silent sections detected.")
+
+###
+### Main Driver
+###
+
+def main():
+    if len(sys.argv)<3:
+        print(f"Usage: python {sys.argv[0]} input.mp4 output.mp4 [absolute_thresh_db] [min_silence_len_ms] [padding_ms]")
+        sys.exit(1)
+
+    input_file=sys.argv[1]
+    output_file=sys.argv[2]
+
+    # defaults - Works well for the average speaking person. If
+    # the min silence and padding are diferent, you could end up
+    # with a janky "Max Headroom" effect.
+
+    absolute_thresh_db=-40.0
+    min_silence_len_ms=300
+    padding_ms=300
+
+    if len(sys.argv)>3:
+        try:
+            absolute_thresh_db=-(abs(float(sys.argv[3])))
+        except ValueError:
+            pass
+
+    if len(sys.argv)>4:
+        try:
+            min_silence_len_ms=float(sys.argv[4])
+        except ValueError:
+            pass
+
+    if len(sys.argv)>5:
+        try:
+            padding_ms=float(sys.argv[5])
+        except ValueError:
+            pass
+
+    remove_silence(input_file, output_file, absolute_thresh_db, min_silence_len_ms, padding_ms)
+
+if __name__ == "__main__":
+    main()
