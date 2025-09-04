@@ -133,6 +133,20 @@ def rms_to_dbfs(rms):
         return -float("inf")
     return 20 * np.log10(rms)
 
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])  # sort by start time
+    merged=[intervals[0]]
+    for current in intervals[1:]:
+        prev_start, prev_end=merged[-1]
+        curr_start, curr_end=current
+        if curr_start <= prev_end:  # overlap or touching
+            merged[-1]=(prev_start, max(prev_end, curr_end))
+        else:
+            merged.append(current)
+    return merged
+
 def detect_nonsilent(audio_array, sr, silence_thresh_db=-40.0, min_silence_len_ms=800, padding_ms=150):
     step=int(0.05 * sr)  # 50ms step
     silence_required=(min_silence_len_ms / 1000.0) * sr
@@ -179,6 +193,12 @@ def remove_silence(video_path, output_path, absolute_thresh_db=-40.0, min_silenc
 
     nonsilent=detect_nonsilent(audio, sr, absolute_thresh_db, min_silence_len_ms, padding_ms)
 
+    ### Merge the sections to stop stuttering
+
+    nonsilent=merge_intervals(nonsilent)
+
+    # Rebuild video
+
     if nonsilent:
         print("Detected non-silent segments (seconds):")
         for seg in nonsilent:
@@ -208,7 +228,7 @@ def main():
 
     absolute_thresh_db=-40.0
     min_silence_len_ms=300
-    padding_ms=300
+    padding_ms=min_silence_len_ms-1
 
     if len(sys.argv)>3:
         try:
