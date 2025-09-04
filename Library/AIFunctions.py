@@ -420,6 +420,8 @@ class Agent:
         try:
             if self.engine=='openai':
                 self.response,self.completion=self.GetOpenAI(Tokens['OpenAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+            elif self.engine=='mistral':
+                self.response,self.completion=self.GetMistral(Tokens['Mistral'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='googleai':
                self.response,self.completion=self.GetGoogleAI(Tokens['GoogleAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,UseOpenAI=self.UseOpenAI)
             elif self.engine=='xai':
@@ -592,7 +594,29 @@ class Agent:
 
     @DF.function_trapper(None)
     def GetOpenAI(self,apikey,messages,model,freqpenalty,temperature,timeout):
+        if model=='gpt-5-nano':
+            temperature=1
+            freqpenalty=0
         clientAI=openai.OpenAI(api_key=apikey)
+        completion=clientAI.chat.completions.create(
+                model=model,
+                frequency_penalty=freqpenalty,
+                temperature=temperature,
+                messages=messages,
+                timeout=timeout
+            )
+        clientAI.close()
+
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
+            self.AIError=True
+
+        response=completion.choices[0].message.content.strip()
+        return response,completion
+
+    @DF.function_trapper(None)
+    def GetMistral(self,apikey,messages,model,freqpenalty,temperature,timeout):
+        clientAI=openai.OpenAI(api_key=apikey,base_url="https://api.mistral.ai/v1/")
         completion=clientAI.chat.completions.create(
                 model=model,
                 frequency_penalty=freqpenalty,
