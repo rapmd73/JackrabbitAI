@@ -417,15 +417,17 @@ class Agent:
         # Read tokens
         Tokens=FF.ReadTokens(userhome=self.userhome)
 
+        # Add a test that the token is actually available
+
         try:
             if self.engine=='openai':
                 self.response,self.completion=self.GetOpenAI(Tokens['OpenAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='mistral':
                 self.response,self.completion=self.GetMistral(Tokens['Mistral'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='googleai':
-               self.response,self.completion=self.GetGoogleAI(Tokens['GoogleAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,UseOpenAI=self.UseOpenAI)
+                self.response,self.completion=self.GetGoogleAI(Tokens['GoogleAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,UseOpenAI=self.UseOpenAI)
             elif self.engine=='xai':
-               self.response,self.completion=self.GetxAI(Tokens['xAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+                self.response,self.completion=self.GetxAI(Tokens['xAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='cohere':
                 self.response,self.completion=self.GetCohere(Tokens['Cohere'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='togetherai':
@@ -433,9 +435,9 @@ class Agent:
             elif self.engine=='ollama':
                 self.response,self.completion=self.GetOllama(Tokens['Ollama'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=mt)
             elif self.engine=='openrouter':
-               self.response,self.completion=self.GetOpenRouter(Tokens['OpenRouter'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+                self.response,self.completion=self.GetOpenRouter(Tokens['OpenRouter'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='anthropic':
-               self.response,self.completion=self.GetAnthropic(Tokens['Anthropic'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
+                self.response,self.completion=self.GetAnthropic(Tokens['Anthropic'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='perplexity':
                 self.response,self.completion=self.GetPerplexity(Tokens['Perplexity'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
             elif self.engine=='huggingface':
@@ -445,6 +447,7 @@ class Agent:
                 self.response=None
                 self.completion=None
         except Exception as err:
+            print(f"JumpTable ERROR: {sys.exc_info()[-1].tb_lineno}/{err}: Check token file")
             self.response=None
             self.completion=None
 
@@ -495,7 +498,7 @@ class Agent:
     # belonging object instance itself where Response resides as method
     # definition belonging thereto.
 
-#    @DF.function_trapper(None)
+    @DF.function_trapper(None)
     def Response(self,input):
         # Reset the memory if needed
 
