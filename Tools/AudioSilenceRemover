@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+from pydub import AudioSegment, silence
+
+# --- USAGE CHECK ---
+if len(sys.argv) < 3:
+    print("Usage: clean_audio.py input.wav output.wav [min_silence_len] [silence_thresh] [keep_silence]")
+    print("Defaults: min_silence_len=550, silence_thresh=-32 dBFS, keep_silence=300 ms")
+    sys.exit(1)
+
+# --- REQUIRED ARGUMENTS ---
+input_file = sys.argv[1]
+output_file = sys.argv[2]
+
+# --- OPTIONAL ARGUMENTS WITH DEFAULTS ---
+min_silence_len = int(sys.argv[3]) if len(sys.argv) > 3 else 550
+silence_thresh_adj = float(sys.argv[4]) if len(sys.argv) > 4 else -32
+keep_silence = int(sys.argv[5]) if len(sys.argv) > 5 else 300
+
+# --- STEP 1: Load audio ---
+sound = AudioSegment.from_wav(input_file)
+
+# --- STEP 2: Detect non-silent chunks ---
+# silence_thresh is relative to dBFS of the audio
+silence_thresh = sound.dBFS + silence_thresh_adj
+
+chunks = silence.split_on_silence(
+    sound,
+    min_silence_len=min_silence_len,
+    silence_thresh=silence_thresh,
+    keep_silence=keep_silence
+)
+
+# --- STEP 3: Concatenate non-silent parts ---
+output = AudioSegment.empty()
+for chunk in chunks:
+    output += chunk
+
+# --- STEP 4: Save the cleaned audio ---
+output.export(output_file, format="wav")
+
+# --- STATUS MESSAGE ---
+print(f"Processed '{input_file}' → '{output_file}'")
+print(f"Settings used: min_silence_len={min_silence_len}, silence_thresh={silence_thresh:.2f} dBFS, keep_silence={keep_silence} ms")

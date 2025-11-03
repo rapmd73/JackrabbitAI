@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+from moviepy import VideoFileClip, concatenate_videoclips
+
+# Require at least 3 arguments: at least 2 input files and 1 output
+if len(sys.argv) < 4:
+    print("Usage: MergeVideos part1.mp4 part2.mp4 [part3.mp4 ...] output.mp4")
+    sys.exit(1)
+
+# All arguments except the last one are input files
+input_files = sys.argv[1:-1]
+output_file = sys.argv[-1]
+
+# Check that all input files exist
+for f in input_files:
+    if not os.path.exists(f):
+        print(f"Missing input file: {f}")
+        sys.exit(1)
+
+# Load all video clips
+clips = []
+try:
+    for f in input_files:
+        clips.append(VideoFileClip(f))
+
+    # Concatenate them
+    final_clip = concatenate_videoclips(clips)
+
+    # Write the result to a file
+    final_clip.write_videofile(output_file)
+
+finally:
+    # Close all clips
+    for clip in clips:
+        clip.close()
+    if 'final_clip' in locals():
+        final_clip.close()

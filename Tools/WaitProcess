@@ -11,10 +11,11 @@ def CountProcess(search_term):
     search_term = search_term.lower()
     for proc in psutil.process_iter(['cmdline']):
         try:
-            cmdline = ' '.join(proc.info['cmdline']).lower()
+            if 'cmdline' in proc.info and proc.info['cmdline'] is not None:
+                cmdline = ' '.join(proc.info['cmdline']).lower()
             if search_term in cmdline:
                 count += 1
-        except Exception ass error: # (psutil.NoSuchProcess, psutil.AccessDenied)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return count
 
@@ -28,3 +29,4 @@ if __name__ == "__main__":
     while result>os.cpu_count():
         result = CountProcess(term)
         time.sleep(1)
+
