@@ -6,7 +6,7 @@ import os
 from moviepy import VideoFileClip, concatenate_videoclips
 
 # Require at least 3 arguments: at least 2 input files and 1 output
-if len(sys.argv) < 4:
+if len(sys.argv) < 3:
     print("Usage: MergeVideos part1.mp4 part2.mp4 [part3.mp4 ...] output.mp4")
     sys.exit(1)
 
