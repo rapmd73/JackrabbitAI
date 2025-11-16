@@ -74,12 +74,15 @@ import requests
 import pdfplumber
 import youtube_transcript_api
 import scrapingant_client as Ant
+import logging
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 
 import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
+
+logging.getLogger('playwright').disabled=True
 
 # The `DecodeHashCodes` function takes an input string and decodes any numeric
 # character references (e.g., `&#65;`) it contains, replacing them with their
@@ -310,9 +313,12 @@ def StripHTML(htmlbuf):
 # or unsupported formats.
 
 #@DF.function_trapper(None)
-def html2text(url,external=False,userhome=None,raw=False):
+def html2text(url,external=False,userhome=None,raw=False, ua=None):
     # Set the user agent
-    userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+    userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    if ua!=None and ua.strip()!='':
+        userAgent=ua
+
     headers={'User-Agent': userAgent}
 
     # Video transcript?
@@ -338,6 +344,7 @@ def html2text(url,external=False,userhome=None,raw=False):
                 html=page.content()
                 browser.close()
         except Exception as err:
+            print(err)
             html=None
 
     # Something really broke not to get anything.

@@ -88,8 +88,12 @@ def DeleteOldFiles(directory,threshold=31*24*60*60):
 def main():
     GuardRail=['/bin','/boot','/dev','/etc','/lib','/lib64','/lost+found','/media','/mnt','/opt','/proc','/root','/run','/sbin','/snap','/srv','/sys','/usr','/var']
 
+    Override=False
     Verbose=False
     for i in sys.argv[1:]:
+        if '-override-safety' in i.lower():
+            sys.argv.remove(i)
+            Override=True
         if '-verbose' in i.lower():
             sys.argv.remove(i)
             Verbose=True
@@ -114,7 +118,7 @@ def main():
     for d in sys.argv[2:]:
         skip=False
         for g in GuardRail:
-            if g in d:
+            if not Override and g in d:
                 print(f"Skipping {d}")
                 skip=True
                 break

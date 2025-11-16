@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+
+def check_drive_space(path, min_gb):
+    # Get filesystem stats for the given path
+    stats = os.statvfs(path)
+
+    # Calculate available space in bytes
+    available_bytes = stats.f_bavail * stats.f_frsize
+
+    # Convert bytes to gigabytes
+    available_gb = available_bytes / (1024 ** 3)
+
+    # Return 1 if below threshold, else 0
+    return 1 if available_gb < min_gb else 0
+
+###
+### Main Driver
+###
+
+def main():
+    if len(sys.argv)<3:
+        print("Usage: CheckFreeSpace <path> <min_gb>")
+        sys.exit(1)
+
+    path = sys.argv[1]
+    min_gb = float(sys.argv[2])
+
+    result = check_drive_space(path, min_gb)
+    sys.exit(result)
+
+if __name__ == "__main__":
+    main()
