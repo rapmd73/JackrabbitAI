@@ -340,11 +340,11 @@ def html2text(url,external=False,userhome=None,raw=False, ua=None):
                 context = browser.new_context(user_agent=userAgent)
                 page = context.new_page()
                 page.set_default_timeout(60*1000)
-                page.goto(url)
+                page.goto(url,wait_until="domcontentloaded")
                 html=page.content()
                 browser.close()
         except Exception as err:
-            print(err)
+            # print(err)
             html=None
 
     # Something really broke not to get anything.

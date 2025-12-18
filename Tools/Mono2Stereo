@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+from pydub import AudioSegment
+
+if len(sys.argv)<3:
+    print(f"Usage: {sys.argv[0]} input.mp4 output.mp4")
+    sys.exit(1)
+
+input_file=sys.argv[1]
+output_file=sys.argv[2]
+
+mono = AudioSegment.from_wav(input_file)
+stereo = mono.set_channels(2)
+stereo.export(output_file, format="wav")
+
