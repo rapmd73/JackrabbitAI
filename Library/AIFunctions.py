@@ -67,17 +67,20 @@ import re
 import tiktoken
 import openai
 import ollama
-import together
 import cohere
 import huggingface_hub
 import anthropic
 from transformers import AutoTokenizer
 from googleapiclient.discovery import build
-import google.generativeai as genai
+import google.genai
+import google.genai.types
+import together
 
 import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
+
+TOGETHER_NO_BANNER=1
 
 PersonaConfig="/home/JackrabbitAI/Personas"
 
@@ -663,6 +666,7 @@ class Agent:
         response=completion.choices[0].message.content.strip()
         return response,completion
 
+    """ OLD VERSION
     @DF.function_trapper(None)
     def GetGoogleAI(self,apikey,messages,model,freqpenalty,temperature,timeout,UseOpenAI=False):
         # Sub functions
@@ -747,6 +751,120 @@ class Agent:
                 response=completion.text
 
             return response,completion
+    """
+
+    @DF.function_trapper(None)
+    def GetGoogleAI(self, apikey, messages, model, freqpenalty, temperature, timeout, UseOpenAI=False):
+        # Sub function updated for the new SDK structure
+        def PrepareGeminiHistory(messages):
+            gemini_messages = []
+            system_instruction = None
+            for message in messages:
+                role = message.get("role")
+                content = message.get("content")
+                if role == "system":
+                    system_instruction = content
+                elif role == "user":
+                    # New SDK uses Content objects with Part objects
+                    gemini_messages.append(google.genai.types.Content(
+                        role="user",
+                        parts=[google.genai.types.Part(text=content)]
+                    ))
+                elif role == "assistant":
+                    gemini_messages.append(google.genai.types.Content(
+                        role="model",
+                        parts=[google.genai.types.Part(text=content)]
+                    ))
+            return system_instruction, gemini_messages
+
+        # Safety settings using the new SDK's type-safe classes
+        safety_settings = [
+            google.genai.types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+            google.genai.types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+            google.genai.types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+            google.genai.types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE")
+        ]
+
+        if UseOpenAI == True:
+            # OpenAI logic remains untouched for compatibility
+            clientAI = openai.OpenAI(api_key=apikey, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+            try:
+                completion = clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+            except:
+                completion = clientAI.chat.completions.create(
+                    model=model,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+            clientAI.close()
+
+            self.stop = completion.choices[0].finish_reason.lower()
+            if self.stop != 'stop':
+                self.AIError = True
+
+            response = completion.choices[0].message.content.strip()
+            return response, completion
+
+        else:
+            # --- NEW GENAI SDK NATIVE CODE ---
+            # 1. Initialize Client (replacing genai.configure)
+            client = google.genai.Client(api_key=apikey)
+
+            sysmsg, history = PrepareGeminiHistory(messages)
+            if sysmsg == None:
+                sysmsg = "You are a helpful assistant"
+
+            # 2. Setup Generation Config (replacing genai.GenerationConfig)
+            # Note: frequency_penalty is now supported in the new SDK config
+            if 'flash-lite' in model:
+                gencfg = google.genai.types.GenerateContentConfig(
+                    temperature=temperature,
+                    system_instruction=sysmsg,
+                    safety_settings=safety_settings
+                )
+            else:
+                gencfg = google.genai.types.GenerateContentConfig(
+                    temperature=temperature,
+                    frequency_penalty=freqpenalty,
+                    system_instruction=sysmsg,
+                    safety_settings=safety_settings
+                )
+
+            try:
+                # 3. Generate Content (replacing start_chat/send_message)
+                # We pass the entire history; the last message is treated as the current prompt.
+                completion = client.models.generate_content(
+                    model=model,
+                    contents=history,
+                    config=gencfg
+                )
+
+                # 4. Handle Response mapping for "drop-in" compatibility
+                # The new SDK uses an Enum for finish_reason (e.g., FinishReason.STOP)
+                # .name gives the string "STOP", which .lower() turns into "stop"
+                self.stop = completion.candidates[0].finish_reason.name.lower()
+
+                if self.stop != "stop":
+                    self.AIError = True
+                    response = None
+                else:
+                    # completion.text is a shortcut for completion.candidates[0].content.parts[0].text
+                    response = completion.text
+
+                return response, completion
+
+            except Exception as e:
+                # Handle API errors to prevent crashing the large code set
+                self.AIError = True
+                print(f"Gemini SDK Error: {str(e)}")
+                return None, None
 
     @DF.function_trapper(None)
     def GetOpenRouter(self,apikey,messages,model,freqpenalty,temperature,timeout):
