@@ -6,6 +6,7 @@ ollama
 openai
 together
 cohere
+xai_sdk
 google-genai
 huggingface_hub
 anthropic

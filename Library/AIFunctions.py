@@ -51,6 +51,7 @@
 
 import sys
 import os
+os.environ["TOGETHER_NO_BANNER"]="1"
 import io
 import copy
 import itertools
