@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# This Python code is designed to help users manage and organize image
+# files for a slideshow. It does this by copying images from one directory
+# to another while ensuring that no duplicate images are included. The
+# program begins by importing necessary libraries that allow it to
+# interact with the file system, handle file operations, and compute hash
+# values for files. These functionalities are crucial for identifying
+# duplicates based on their content rather than just their names.
+
+# The core of the program revolves around several functions that work
+# together seamlessly. One of the key functions calculates a unique
+# identifier, or hash, for each file using a method called SHA-256. This
+# hash serves as a fingerprint of the file's contents, allowing the
+# program to determine if two files are identical even if they have
+# different names. Another function is responsible for loading existing
+# files in the target slideshow directory and organizing them by size,
+# which helps streamline the process of checking for duplicates later on.
+
+# As the program processes each image in the specified scanning directory,
+# it checks whether that image already exists in the slideshow directory
+# by comparing sizes first and then verifying hashes if necessary. If an
+# image is found not to be a duplicate, it gets copied into the slideshow
+# folder with a new name based on an incrementing counter. This ensures
+# that all images added to the slideshow have unique identifiers while
+# maintaining their original formats.
+
+# Finally, when executed from the command line with specific arguments
+# indicating both directories involved, the one containing existing slides
+# and another containing new images, the script performs its tasks
+# efficiently and effectively. If any issues arise during execution, such
+# as incorrect directory paths, the program provides clear feedback to
+# guide users toward resolving these problems before proceeding further.
+# Overall, this code offers a practical solution for anyone looking to
+# curate their digital photo collections without worrying about
+# duplicating efforts or cluttering their folders with repeated images.
+
+import os
+import sys
+import shutil
+import hashlib
+
+def file_hash(path, chunk_size=8192):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_existing_files(slideshow_dir):
+    existing = {}
+    max_number = 0
+
+    for name in os.listdir(slideshow_dir):
+        path = os.path.join(slideshow_dir, name)
+
+        if not os.path.isfile(path):
+            continue
+
+        base, ext = os.path.splitext(name)
+        if base.isdigit():
+            num = int(base)
+            if num > max_number:
+                max_number = num
+
+        size = os.path.getsize(path)
+        existing.setdefault(size, []).append(path)
+
+    return existing, max_number
+
+
+def is_duplicate(src_path, existing_by_size):
+    size = os.path.getsize(src_path)
+
+    if size not in existing_by_size:
+        return False
+
+    src_hash = file_hash(src_path)
+
+    for existing_path in existing_by_size[size]:
+        if file_hash(existing_path) == src_hash:
+            return True
+
+    return False
+
+
+def copy_and_rename(slideshow_dir, scanning_dir):
+    if not os.path.isdir(slideshow_dir):
+        raise ValueError("Slideshow directory does not exist")
+
+    if not os.path.isdir(scanning_dir):
+        raise ValueError("Scanning directory does not exist")
+
+    existing_by_size, counter = load_existing_files(slideshow_dir)
+    counter += 1
+
+    for root, _, files in os.walk(scanning_dir):
+        for filename in sorted(files):
+            src_path = os.path.join(root, filename)
+
+            if not os.path.isfile(src_path):
+                continue
+
+            if is_duplicate(src_path, existing_by_size):
+                continue
+
+            _, ext = os.path.splitext(filename)
+            dest_name = f"{counter}{ext}"
+            dest_path = os.path.join(slideshow_dir, dest_name)
+
+            shutil.copy2(src_path, dest_path)
+
+            size = os.path.getsize(dest_path)
+            existing_by_size.setdefault(size, []).append(dest_path)
+
+            counter += 1
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python copy_slideshow.py <slideshow_dir> <scanning_dir>")
+        sys.exit(1)
+
+    copy_and_rename(sys.argv[1], sys.argv[2])
+
