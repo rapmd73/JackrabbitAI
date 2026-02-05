@@ -139,19 +139,38 @@ def WriteFile(fn,data):
 # being returned as a list.
 
 @DF.function_trapper(None)
-def ReadFile2List(fname,ForceLower=False,ForceUpper=False,NoStripEmpty=False):
+def ReadFile2List(fname,Unique=True,Delimiter="\n",ForceLower=False,ForceUpper=False,NoStripEmpty=False):
     # Something broke. Keep the responses in character
     if not os.path.exists(fname):
         return None
 
-    responses=ReadFile(fname).strip().split('\n')
+    # Read the file and split it.
+    if Delimiter!="\n":
+        responses=ReadFile(fname).strip().replace("\n",Delimiter).split(Delimiter)
+    else:
+        responses=ReadFile(fname).strip().split(Delimiter)
+
+    # Get rid of empty items
     if NoStripEmpty==False:
         while '' in responses:
             responses.remove('')
+
+    # Force upper if needed.
     if ForceLower==True:
         responses=[item.lower() for item in responses]
+
+    # Force lower if needed.
     if ForceUpper==True:
         responses=[item.upper() for item in responses]
+
+    # Force unique
+    if Unique==True:
+        res=[]
+        for r in responses:
+            if r not in res:
+                res.append(r)
+        responses=res
+
     return responses
 
 # The `ReadTokens` function reads and processes token files in JSON format,

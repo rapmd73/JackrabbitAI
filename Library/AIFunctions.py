@@ -601,17 +601,28 @@ class Agent:
 
     @DF.function_trapper(None)
     def GetOpenAI(self,apikey,messages,model,freqpenalty,temperature,timeout):
-        if model=='gpt-5-nano':
+        if model=='gpt-5-nano' or model=='gpt-5-mini':
             temperature=1
             freqpenalty=0
         clientAI=openai.OpenAI(api_key=apikey)
-        completion=clientAI.chat.completions.create(
-                model=model,
-                frequency_penalty=freqpenalty,
-                temperature=temperature,
-                messages=messages,
-                timeout=timeout
-            )
+        try:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    reasoning_effort="minimal",
+                    timeout=timeout
+                )
+        except Exception as err:
+            print(f"ERR: {err}");
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
         clientAI.close()
 
         self.stop=completion.choices[0].finish_reason.lower()

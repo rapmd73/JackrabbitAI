@@ -51,7 +51,6 @@ def file_hash(path, chunk_size=8192):
             h.update(chunk)
     return h.hexdigest()
 
-
 def load_existing_files(slideshow_dir):
     existing = {}
     max_number = 0
@@ -73,7 +72,6 @@ def load_existing_files(slideshow_dir):
 
     return existing, max_number
 
-
 def is_duplicate(src_path, existing_by_size):
     size = os.path.getsize(src_path)
 
@@ -87,7 +85,6 @@ def is_duplicate(src_path, existing_by_size):
             return True
 
     return False
-
 
 def copy_and_rename(slideshow_dir, scanning_dir):
     if not os.path.isdir(slideshow_dir):
@@ -103,11 +100,16 @@ def copy_and_rename(slideshow_dir, scanning_dir):
         for filename in sorted(files):
             src_path = os.path.join(root, filename)
 
+            if 'noframe' not in src_path or not src_path.endswith('.png'):
+                continue
+
             if not os.path.isfile(src_path):
                 continue
 
             if is_duplicate(src_path, existing_by_size):
                 continue
+
+            print(f"{src_path}")
 
             _, ext = os.path.splitext(filename)
             dest_name = f"{counter}{ext}"

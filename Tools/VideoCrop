@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+from moviepy import VideoFileClip
+
+def center_crop_max(video, max_w=1536, max_h=1024):
+    """
+    Crops the video to a maximum of max_w x max_h, centered.
+    If the video is already smaller than these bounds, it returns the original.
+    """
+    w, h = video.size
+
+    # Calculate the target dimensions
+    crop_w = min(w, max_w)
+    crop_h = min(h, max_h)
+
+    # Return original if no cropping is needed
+    if crop_w == w and crop_h == h:
+        return video
+
+    # Calculate coordinates for a centered crop
+    x1 = (w - crop_w) // 2
+    y1 = (h - crop_h) // 2
+    x2 = x1 + crop_w
+    y2 = y1 + crop_h
+
+    # In MoviePy 2.0+, use .cropped() instead of .fx(vfx.crop, ...)
+    # If you are on an older version (<2.0), use .crop(x1=x1, y1=y1, x2=x2, y2=y2)
+    return video.cropped(x1=x1, y1=y1, x2=x2, y2=y2)
+
+def main():
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} input.mp4 output.mp4")
+        sys.exit(1)
+
+    input_path = sys.argv[1]
+    output_path = sys.argv[2]
+
+    # Use a 'with' statement to ensure the file handle is closed properly
+    try:
+        with VideoFileClip(input_path) as clip:
+            processed_clip = center_crop_max(clip, 1536, 1024)
+            # Write the result
+            processed_clip.write_videofile(
+                output_path, 
+                codec="libx264", 
+                audio_codec="aac"
+            )
+    except Exception as e:
+        print(f"Error processing video: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+
