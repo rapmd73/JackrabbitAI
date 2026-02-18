@@ -599,30 +599,37 @@ class Agent:
     # provides a unified interface for interacting with multiple AI chat
     # services.
 
+    # gpt-5-nan0/mini   reasoning effort = minimal
+    # gpt-5             minimal
+    # gpt-5.1/2         none
+
     @DF.function_trapper(None)
     def GetOpenAI(self,apikey,messages,model,freqpenalty,temperature,timeout):
-        if model=='gpt-5-nano' or model=='gpt-5-mini':
-            temperature=1
-            freqpenalty=0
+        # Required base parameters
+        params={ "model": model, "messages": messages, "timeout": timeout }
+
+        if 'gpt-5' in model:
+            if 'nano' in model or 'mini' in model or model=='gpt-5':
+                params['reasoning_effort']='minimal'
+            else:
+                if 'chat' not in model:
+                    params['reasoning_effort']='none'
+
+        # Add temperature and frequency penalty
+        if 'chat' in model or 'gpt-5' not in model:
+            params['temperature']=temperature
+            params['frequency_penalty']=freqpenalty
+
         clientAI=openai.OpenAI(api_key=apikey)
         try:
-            completion=clientAI.chat.completions.create(
-                    model=model,
-                    frequency_penalty=freqpenalty,
-                    temperature=temperature,
-                    messages=messages,
-                    reasoning_effort="minimal",
-                    timeout=timeout
-                )
+            completion=clientAI.chat.completions.create(**params)
         except Exception as err:
             print(f"ERR: {err}");
             completion=clientAI.chat.completions.create(
-                    model=model,
-                    frequency_penalty=freqpenalty,
-                    temperature=temperature,
-                    messages=messages,
-                    timeout=timeout
-                )
+                model=model,
+                messages=messages,
+                timeout=timeout )
+
         clientAI.close()
 
         self.stop=completion.choices[0].finish_reason.lower()
