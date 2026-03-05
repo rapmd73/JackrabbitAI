@@ -153,7 +153,7 @@ class Agent:
             else:
                 self.encoding="cl100k_base"
 
-    # Change the model
+    # Change the model. This is the model name, like gpt=4o-mini or gpt-5-chat-latest
 
     def SetModel(self,model):
         self.model=model
@@ -163,16 +163,23 @@ class Agent:
     def SetModel(self,maxtokens):
         self.maxtokens=maxtokens
 
-    # Change the encoding
+    # Change the encoding, like o200k_base. OpenAI os the only one that uses
+    # this so far.
 
     def SetEncoding(self,encoding):
         self.encoding=encoding
 
+    # Frequency Penality
+
     def FreqPenalty(self,freqpenalty):
         self.freqpenalty=freqpenalty
 
+    # Temperature
+
     def Temperature(self,temperture):
         self.temperature=temperature
+
+    # How long to hold the connection before failing out
 
     def Timeout(self,timeout):
         self.timeout=timeout
@@ -237,6 +244,8 @@ class Agent:
             mem.append(memdata)
 
         return mem
+
+    # Put a memory element into the AI memory data
 
     def Put(self,role,data):
         self.Memory.append({ "role":role,"content":data,

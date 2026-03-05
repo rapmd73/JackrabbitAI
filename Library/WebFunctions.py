@@ -312,7 +312,7 @@ def StripHTML(htmlbuf):
 # cannot be completed successfully due to external factors like network errors
 # or unsupported formats.
 
-#@DF.function_trapper(None)
+@DF.function_trapper(None)
 def html2text(url,external=False,userhome=None,raw=False, ua=None):
     # Set the user agent
     userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

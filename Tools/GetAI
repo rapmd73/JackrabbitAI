@@ -41,6 +41,11 @@
 # a response based on the combined role instructions and input data. Finally,
 # the script prints the AI's response to the user.
 
+# Example of a default model
+# export JRAIengine="GoogleAI"
+# export JRAImodel="gemini-2.5-flash-lite"
+# export JRAItokens=256000
+
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import os
@@ -87,10 +92,6 @@ def main():
         SaveMemory=False
         args.remove('-nomemory')
 
-# export JRAIengine="GoogleAI"
-# export JRAImodel="gemini-2.5-flash-lite"
-# export JRAItokens=256000
-
     if len(args)>5:
         engine=args[1]
         if engine.lower()=='default':
@@ -112,9 +113,12 @@ def main():
     # The role is the instruction, analyze, evaluate... so.
     # The input is the data we what the instructions applied to.
 
-    if role[0]=='@':
-        if os.path.exists(role[1:]):
-            role=FF.ReadFile(role[1:].strip()).replace('\n','\\n').replace('"',"'")
+    if role[0]=='@' or role[0]=='/':
+        fname=role
+        if role[0]=='@':
+            fname=role[1:]
+        if os.path.exists(fname):
+            role=FF.ReadFile(fname.strip()).replace('\n','\\n').replace('"',"'")
         else:
             print("Role file not found")
             sys.exit(0)

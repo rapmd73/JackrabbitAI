@@ -206,7 +206,7 @@ def ReadTokens(gid=None,userhome=None):
 
     # Inspired by SamAcctX
     for key in tokens:
-        if tokens[key].lower().startswith('!environment:'):
+        if type(tokens[key]) is str and tokens[key].lower().startswith('!environment:'):
             vn=tokens[key].split(':',1)[1].strip() # Environment variable name
             ev=os.getenv(vn) # Environment variable contents, if any
             # Make sre we have an environment variable
