@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Jackrabbit Relay Technical Analysis example
+
+# 2021-2025 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
+import sys
+
+###
+### MAIN driver
+###
+
+def main():
+    skip=0
+    if len(sys.argv)>1:
+        skip=int(sys.argv[1])
+
+    # skip counter
+    SkipCount=0
+
+    # Read in the data
+
+    for line in sys.stdin:
+        if SkipCount==0:
+            print(line, end='')
+        SkipCount=(SkipCount+1)%skip
+
+if __name__=='__main__':
+    main()
+
+###
+### End demo
+###
