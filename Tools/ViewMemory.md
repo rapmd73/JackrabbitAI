@@ -1,0 +1,15 @@
+# Section 1 - Non-Technical Description
+
+This program reads a file supplied when it is run, treats each line of that file as a stored "memory," and for each memory that can be understood it prints a short label (showing a role and a token count) followed by the memory's text content, with simple formatting applied so the output is easier to read.
+
+# Section 2 - Technical Analysis
+
+The script begins by ensuring it runs under Python 3 and imports several modules from both the standard library and a local library path. It appends '/home/JackrabbitAI/Library' to the module search path and then imports os, json, and three local modules named CoreFunctions (aliased CF), FileFunctions (aliased FF), and WebFunctions (aliased WF). The presence of these imports means the script relies on functions defined in those local modules.
+
+It checks the command-line argument list (sys.argv) and requires at least one argument beyond the program name. If no filename argument is provided, it prints the message "A memory file is required." and exits with status code 1. If a filename is given, it calls FF.ReadFile2List with the first command-line argument (sys.argv[1]) and assigns the result to memList. From the name and how it is used, memList is expected to be an iterable (likely a list) of string entries read from the file; each entry is processed separately.
+
+The script iterates over memList with a for loop. For each item, it attempts to parse the item as JSON using json.loads(item). If json.loads raises an exception for that item, the exception is caught and the code executes continue, skipping to the next item. For items that parse successfully, the resulting dictionary is stored in mem.
+
+From mem, the code accesses mem['content'], mem['role'], and mem['tokens']. It takes mem['content'], calls strip() on it to remove leading and trailing whitespace, and then calls replace('\\n','\n') on the stripped string to convert any literal backslash-n sequences into actual newline characters. That result is passed to CF.DecodeUnicode, and the returned value is assigned to text. This indicates the script expects content to be a string possibly containing escaped newlines and that CF.DecodeUnicode performs some kind of decoding on the text.
+
+Finally, the script prints a formatted string for each successfully parsed memory. The printed output begins with mem['role'], then a forward slash, then mem['tokens'], followed by two newlines, then the decoded text, then another newline. The format uses an f-string to insert mem['role'] and mem['tokens'] and to include the decoded content. Each successfully parsed and decoded memory therefore produces a two-line header with role and token count, a blank line, and the cleaned content body. If any memory item fails JSON parsing or if any of the dictionary accesses were to raise exceptions, those items are skipped due to the try/except around json.loads only; other exceptions occurring after parsing are not caught by that try/except and would propagate.
