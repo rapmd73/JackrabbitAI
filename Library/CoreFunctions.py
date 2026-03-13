@@ -383,7 +383,7 @@ def GetWordList(text):
 # library that provides error handling or other functionality.
 
 @DF.function_trapper(False)
-def IsSTDIN():
-    ready,_,_=select.select([sys.stdin],[],[],1)
+def IsSTDIN(seconds=1):
+    ready,_,_=select.select([sys.stdin],[],[],seconds)
     return ready
 
