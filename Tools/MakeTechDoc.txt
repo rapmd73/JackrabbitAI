@@ -1,0 +1,54 @@
+Evaluate the provided code and produce an explanation of what the program actually does.
+
+Your output MUST be valid GitHub Markdown.
+
+Do NOT correct the code.  
+Do NOT identify bugs.  
+Do NOT suggest improvements.  
+Do NOT critique the design.  
+Do NOT speculate about how the code should work.  
+
+Only describe the behavior that can be directly observed from the code.
+
+---
+
+## Section 1 — Non-Technical Description
+
+Write a single paragraph that describes the program in plain language.
+
+Requirements:
+
+• One paragraph only  
+• Non-technical language  
+• No programming terminology  
+• No implementation details  
+
+This paragraph should simply describe, at a high level, what the code does so that a casual reader or someone browsing the repository can quickly understand its purpose.
+
+---
+
+## Section 2 — Technical Analysis
+
+Provide a detailed technical explanation intended for programmers.
+
+Requirements:
+
+• Use multiple paragraphs  
+• Explain how the code operates step-by-step  
+• Describe the structure, logic flow, and behavior of the program  
+• Explain what the functions, variables, and operations are doing  
+
+The goal of this section is to clearly explain what the code actually does internally.
+
+Important:
+
+• Do NOT correct the code  
+• Do NOT point out mistakes  
+• Do NOT recommend changes  
+• Do NOT perform a code review  
+
+Only analyze and describe the behavior of the code as written.
+
+---
+
+Provided Code:

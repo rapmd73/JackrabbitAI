@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Jackrabit AI
+# 2024-2026 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
+# Simple agent document generator
+
+# This program is designed to process a directory of files and generate
+# AI-produced documentation or analysis for each file, saving the
+# results as `.md` files. It operates as an autonomous batch-processing
+# agent: a single AI model is wrapped with control logic that iterates
+# over all eligible files, applies the instructions from a role file,
+# handles errors, decodes the AI output, and writes the results. Unlike
+# a simple AI model, which only produces a response for a single input,
+# this agent can systematically process multiple files without human
+# intervention.
+
+# The "role" file serves as the instruction set for the agent. It
+# defines exactly how each file should be analyzed or documented,
+# whether producing a technical analysis, explanatory teaching material,
+# or structured commentary. By separating the instructions from the
+# data, the program allows the same AI agent to generate consistent
+# outputs across a wide variety of files simply by changing the role
+# file, without modifying the program itself.
+
+# The program uses the JackrabbitAI library for file handling, AI
+# interaction, and Unicode decoding, ensuring all file operations are
+# consistent and robust. It skips certain file types that are not meant
+# for processing and avoids overwriting existing `.md` outputs. The
+# agent is stateless, meaning each file is processed independently,
+# ensuring determinism and reproducibility. This design makes it a clear
+# example of a minimal but functional AI agent in practice, suitable for
+# learners and experts alike to study autonomous AI orchestration in a
+# controlled environment.
+
+import sys
+sys.path.append('/home/JackrabbitAI/Library')
+
+import os
+
+import CoreFunctions as CF
+import FileFunctions as FF
+import AIFunctions as AI
+
+SkipExtentions={"md","png","jpg","jpeg","gif","webp","bmp","svg","txt"}
+
+def main():
+    ResetMemory=True
+    SaveMemory=False
+    NoMemory=True
+    maxresp=0
+
+    if len(sys.argv) < 3:
+        print("Role (instructions) file and directory must be supplied.")
+        sys.exit(0)
+
+    engine=os.getenv('JRAIengine')
+    model=os.getenv('JRAImodel')
+    mt=os.getenv('JRAItokens')
+
+    if not engine or not model or not mt:
+        print("Error: Environment variables JRAIengine, JRAImodel, and JRAItokens must be set.")
+        sys.exit(1)
+
+    mt=int(mt)
+
+    persona=None
+
+    role=sys.argv[1]
+    dirname=sys.argv[2]
+
+    if not os.path.isdir(dirname):
+        print("The second argument MUST be a directory.")
+        sys.exit(0)
+
+    if role[0]=='@' or role[0]=='/':
+        fname=role
+        if role[0]=='@':
+            fname=role[1:]
+
+        if os.path.exists(fname):
+            role=FF.ReadFile(fname.strip()).replace('\n','\\n').replace('"',"'")
+        else:
+            print("Role file not found")
+            sys.exit(0)
+
+    agent=AI.Agent(engine=engine,model=model,maxtokens=mt,persona=persona,reset=ResetMemory,save=SaveMemory,isolation=NoMemory,maxrespsize=maxresp)
+
+    # The only difference between an AI model and an AI agent is the loop.
+
+    for name in os.listdir(dirname):
+        path=os.path.join(dirname,name)
+
+        if not os.path.isfile(path):
+            continue
+
+        if "." in name:
+            ext=name.rsplit(".",1)[1].lower()
+        else:
+            ext=""
+
+        if ext in SkipExtentions:
+            continue
+
+        mdfile=path + ".md"
+
+        if os.path.exists(mdfile):
+            continue
+
+        print(path)
+
+        input=FF.ReadFile(path).replace('\n','\\n').replace('"',"'")
+
+        response=agent.Response(role+'\n\n'+input)
+        if response==None or agent.AIError==True:
+            if response!=None:
+                print(f"Error: {agent.stop}/{response}")
+            continue
+
+        decoded=CF.DecodeUnicode(response.strip())
+
+        FF.WriteFile(mdfile,decoded)
+
+if __name__=='__main__':
+    main()
+
