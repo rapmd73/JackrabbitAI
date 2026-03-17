@@ -160,7 +160,7 @@ class Agent:
 
     # Change the maximum number of tokens
 
-    def SetModel(self,maxtokens):
+    def SetTokens(self,maxtokens):
         self.maxtokens=maxtokens
 
     # Change the encoding, like o200k_base. OpenAI os the only one that uses
@@ -176,7 +176,7 @@ class Agent:
 
     # Temperature
 
-    def Temperature(self,temperture):
+    def Temperature(self,temperature):
         self.temperature=temperature
 
     # How long to hold the connection before failing out
@@ -1046,12 +1046,18 @@ class Agent:
         response=requests.post(PerplexityURL, json=payload, headers=headers,timeout=timeout)
 
         # Check if the request was successful
+        completion=None
         if response.status_code==200:
             completion=response.json()
 
-        self.stop=completion["choices"][0].get("finish_reason", "").lower()
-        if self.stop!="stop":
+        if completion is not None:
+            self.stop=completion["choices"][0].get("finish_reason", "").lower()
+            if self.stop!="stop":
+                self.AIError=True
+        else:
+            self.stop='error'
             self.AIError=True
+            return None, None
 
         response=completion["choices"][0]["message"]["content"].strip()
 
@@ -1075,7 +1081,7 @@ class Agent:
     # crashing.
 
     @DF.function_trapper(None)
-    def GetPersona(basename,channel=None,nsfw=False):
+    def GetPersona(self,basename,channel=None,nsfw=False):
         if channel:
             # NSFW channel version
             refname=f"{PersonaConfig}/{basename}/{basename}.{channel}.system.nsfw"
