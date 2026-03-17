@@ -1,7 +1,3 @@
-This is a very rough ALPHA AI framework with memory capabilities.
-
----
-
 Jackrabbit AI is a powerful and versatile framework designed for building
 sophisticated artificial intelligence applications with remarkable ease and
 efficiency. Crafted in Python, this innovative toolkit enables developers to
@@ -27,9 +23,13 @@ technology at their fingertips. This framework not only empowers creators but
 also fosters meaningful connections in our digital world through thoughtful
 design and innovative solutions.
 
----
+Please visit the [Wiki](https://github.com/rapmd73/JackrabbitAI/wiki) for in-depth information
 
 If you find this software useful, please give it a star and consider
 [sponsoring](https://github.com/sponsors/rapmd73) it to support its ongoing
-development and enhancement. Please also join the [support
-server](https://discord.gg/8jFFQMgV8Z).
+development and enhancement. 
+
+If you are interested in Ethical AI usage, please visit my
+[Patreon](https://www.patreon.com/bePatron?u=16475771).
+
+Please also join my [support server](https://discord.gg/8jFFQMgV8Z).
