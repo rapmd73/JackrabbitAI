@@ -87,32 +87,6 @@ TokenStorage='/home/JackrabbitAI/Tokens'
 
 MasterNice=os.getpriority(os.PRIO_PROCESS,0)
 
-# The `DecodeHashCodes` function is designed to decode numeric character
-# references in a given input string. It utilizes a regular expression to
-# identify patterns such as `&#65;` and replaces them with their corresponding
-# characters. The function achieves this through a helper function,
-# `replace_entity`, which extracts the numeric value from each match, converts
-# it to a character using the `chr` function, and returns the character. If the
-# conversion fails, it returns the original match. The main function then
-# applies this replacement process to the entire input string using `re.sub`,
-# ultimately returning the decoded string.
-
-@DF.function_trapper('')
-def DecodeHashCodes(input_string):
-    def replace_entity(match):
-        # Extract the numeric value from the match
-        entity_code = match.group(1)
-        try:
-            # Convert the numeric value to a character
-            return chr(int(entity_code))
-        except ValueError:
-            # Return the original match if conversion fails
-            return match.group(0)
-
-    # Regular expression to match numeric character references (e.g., &#65;)
-    entity_pattern = r'&#(\d+);'
-    return re.sub(entity_pattern, replace_entity, input_string)
-
 # The `DecodeUnicode` function takes a string input `text` and replaces various
 # Unicode characters with their corresponding ASCII equivalents. It uses a
 # dictionary `replacements` to map Unicode characters, such as left and right
