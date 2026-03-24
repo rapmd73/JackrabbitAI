@@ -520,9 +520,11 @@ class Agent:
 
         # Load the system role only ONCE
 
-        if self.persona is not None and self.persona.lower()!="none" and self.Memory==None:
+        if self.persona is not None and self.persona.lower()!="none":
             SystemRole=self.GetPersona(self.persona)
-            self.Put("system", SystemRole)
+        else:
+            SystemRole='You are a helpful assistant.'
+        self.Put("system", SystemRole)
 
         # Read any existing memory if not in isolation
         if not self.isolation:

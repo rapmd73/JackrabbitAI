@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Jackrabbit Servi
+# 2021-2035 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
+import os
+import sys
+import json
+from socketserver import ForkingMixIn
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime
+
+Tokens={}
+
+# =============================================================================
+# 1. CENTRALIZED PATH DEFINITIONS
+# =============================================================================
+BASE_DIR        = '/home/GitHub/JackrabbitAI/Web'
+LIB_DIR         = '/home/GitHub/JackrabbitAI/Library'     # From your working example
+CONFIG_DIR      = '/home/GitHub/JackrabbitAI/Config'
+MEMORY_DIR      = '/home/JackrabbitAI/Web'
+LOG_DIR         = '/home/JackrabbitAI/Web'
+TOKEN_DIR       = '/home/JackrabbitAI/Web'
+UI_HTML_FILE    = os.path.join(BASE_DIR, 'index.html')
+IP_LIST_FILE    = os.path.join(CONFIG_DIR, 'IPList.cfg')
+IDENTITY_FILE   = os.path.join(CONFIG_DIR, 'Identity.cfg')
+LOG_FILE        = os.path.join(LOG_DIR, 'JackrabbitAI.log')
+
+# =============================================================================
+# 2. LIBRARY INITIALIZATION
+# =============================================================================
+sys.path.append(LIB_DIR)
+
+import DecoratorFunctions as DF
+import CoreFunctions as CF
+import FileFunctions as FF
+import AIFunctions as AI
+
+# Global Security Constants
+VERSION = "0.0.0.0.10"
+NO_HTML = '<html><title>NO!</title><body style="background-color:#ffff00;display:flex;width:100vw;height:100vh;align-items:center;justify-content:center"><h1 style="color:#ff0000;font-weight:1000;font-size:10rem">NO!</h1></body></html>'
+
+# =============================================================================
+# 3. UTILITY FUNCTIONS
+# =============================================================================
+
+def WritePID(port):
+    pid_fn = os.path.join(BASE_DIR, f"{port}.pid")
+    FF.WriteFile(pid_fn, str(os.getpid()))
+
+def WriteLog(addr, msg):
+    load = CF.GetLoadAVG()
+    l_str = f"[{load[0]},{load[1]},{load[2]}]" if load else "[0,0,0]"
+    time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+#    FF.AppendFile(LOG_FILE, f'{time_str} {addr:16} {l_str} {msg}\n')
+    print(f'{time_str} {addr:16} {l_str} {msg}')
+
+def CheckIPaddress(addr):
+    return True
+    if os.path.exists(IP_LIST_FILE):
+        ips = FF.ReadFile2List(IP_LIST_FILE)
+        return ips and addr in ips
+    return False
+
+# =============================================================================
+# 4. AI PROCESSING LOGIC
+# =============================================================================
+
+def ProcessAI(addr, payload):
+    try:
+        # Clean input using CoreFunctions
+        data = json.loads(payload)
+
+        # Extract the message for the AI model
+        user_text = data.get("message", "")
+        user_id = data.get("user_id", "web_user")
+
+        # Normalize text using CoreFunctions
+        user_text = CF.DecodeUnicode(user_text)
+
+        # OS Load Management: Lower priority for the AI worker fork
+        # CF.renice(CF.MasterNice + 5)
+
+        # Initialize Agent based on working example parameters
+        # We pull engine/model from Env or defaults if not in payload
+        engine=data.get("engine", 'None')
+        model=data.get("model", 'None')
+        tokens=data.get("tokens", 'None')
+        persona=data.get("persona",'None')
+
+        if engine.lower()=='default' or engine.lower()=='none':
+            engine=os.getenv('JRAIengine', 'openai')
+        if model.lower()=='default' or model.lower()=='none':
+            model=os.getenv('JRAImodel', 'gpt-5-nano')
+        if tokens.lower()=='default' or tokens.lower()=='none':
+            tokens=os.getenv('JRAItokens', 128000)
+        tokens=int(tokens)
+
+        agent = AI.Agent(
+            engine=engine,
+            model=model,
+            maxtokens=tokens,
+            persona=persona,
+            user=user_id,
+            userhome=TOKEN_DIR,
+            reset=False,
+            save=True
+        )
+
+        # Get response (Blocks in this child process fork)
+        response = agent.Response(user_text)
+
+        result = {"status": "success", "reply": response}
+    except Exception as err:
+        WriteLog(addr, f"AI ERROR: {str(err)}")
+        result = {"status": "error", "message": "ServiAI processing failure."}
+
+    return json.dumps(result).encode('utf-8')
+
+# =============================================================================
+# 5. SERVER HANDLER
+# =============================================================================
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = 'Servi/' + VERSION
+    sys_version = ''
+
+    def do_GET(self):
+        addr = self.client_address[0]
+
+        if not CheckIPaddress(str(addr)):
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(NO_HTML.encode('utf-8'))
+            return
+
+        if self.path == "/" or self.path == "/index.html":
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            content = FF.ReadFile(UI_HTML_FILE)
+            self.wfile.write(content.encode('utf-8') if content else b"UI Missing")
+        else:
+            self.send_response(200)
+            self.wfile.write(NO_HTML.encode('utf-8'))
+
+    def do_POST(self):
+        addr = self.client_address[0]
+
+        if not CheckIPaddress(str(addr)):
+            self.send_response(403)
+            self.end_headers()
+            return
+
+        if self.path == "/chat":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+
+            content_len = int(self.headers.get('content-length', 0))
+            payload = self.rfile.read(content_len).decode('utf-8')
+
+            # Child fork handles this blocking call
+            res = ProcessAI(addr, payload)
+            if res is None:
+                res=b'Service did not respond.'
+
+            self.wfile.write(res)
+
+class ForkingSimpleServer(ForkingMixIn, HTTPServer):
+    pass
+
+def main():
+    global Tokens
+
+    Tokens=FF.ReadTokens(userhome=TOKEN_DIR)
+
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 13131
+
+    FF.mkdir(LOG_DIR)
+    FF.mkdir(MEMORY_DIR)
+
+#    if not os.path.exists(IDENTITY_FILE) or not os.path.exists(IP_LIST_FILE):
+#        print("Required Config Files Missing.")
+#        sys.exit(2)
+
+    WritePID(port)
+    WriteLog("SYSTEM", f"Servi Online on port {port}")
+
+    try:
+        server = ForkingSimpleServer(('', port), Handler)
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+if __name__ == '__main__':
+    main()
+
