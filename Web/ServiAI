@@ -17,10 +17,10 @@ Tokens={}
 # =============================================================================
 # 1. CENTRALIZED PATH DEFINITIONS
 # =============================================================================
-BASE_DIR        = '/home/GitHub/JackrabbitAI/Web'
-LIB_DIR         = '/home/GitHub/JackrabbitAI/Library'     # From your working example
-CONFIG_DIR      = '/home/GitHub/JackrabbitAI/Config'
-MEMORY_DIR      = '/home/JackrabbitAI/Web'
+BASE_DIR        = '/home/JackrabbitAI/Web'
+LIB_DIR         = '/home/JackrabbitAI/Library'     # From your working example
+CONFIG_DIR      = '/home/JackrabbitAI/Config'
+MEMORY_DIR      = '/home/JackrabbitAI/Web/Memory'
 LOG_DIR         = '/home/JackrabbitAI/Web'
 TOKEN_DIR       = '/home/JackrabbitAI/Web'
 UI_HTML_FILE    = os.path.join(BASE_DIR, 'index.html')
@@ -54,7 +54,8 @@ def WriteLog(addr, msg):
     load = CF.GetLoadAVG()
     l_str = f"[{load[0]},{load[1]},{load[2]}]" if load else "[0,0,0]"
     time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-    FF.AppendFile(LOG_FILE, f'{time_str} {addr:16} {l_str} {msg}\n')
+#    FF.AppendFile(LOG_FILE, f'{time_str} {addr:16} {l_str} {msg}\n')
+    print(f'{time_str} {addr:16} {l_str} {msg}')
 
 def CheckIPaddress(addr):
     return True
@@ -67,14 +68,55 @@ def CheckIPaddress(addr):
 # 4. AI PROCESSING LOGIC
 # =============================================================================
 
-def ProcessAI(addr, payload):
+def LoadAIConversation(addr,user_id):
+    try:
+        # Just something to prime the agent to access memory. NO calls here.
+        persona='None'
+        engine=os.getenv('JRAIengine', 'openai')
+        model=os.getenv('JRAImodel', 'gpt-5-nano')
+        tokens=os.getenv('JRAItokens', 128000)
+        tokens=int(tokens)
+
+        agent = AI.Agent(
+            engine=engine,
+            model=model,
+            maxtokens=tokens,
+            persona=persona,
+            user=user_id,
+            userhome=TOKEN_DIR,
+            reset=False,
+            save=True
+        )
+        agent.Read()
+
+        # Read messages
+        messages=[]
+        for item in agent.Memory:
+            role=item["role"]
+            content=item["content"]
+
+            # Skip system prompts & empty content & token counts etc.
+            valid_roles=["user","assistant"]
+            valid_content=len(content.strip())>3 and "\\n" not in content[:4]
+
+            if role.lower() in valid_roles: # and valid_content: # and len(messages)<6:
+                messages.append({"role":role,"content":content})
+
+        result={"status":"success","messages":messages}
+    except Exception as errr: # Note double r avoids conflict w/err var later!
+        WriteLog(addr,f"HISTORY ERR:{str(errr)}")
+        result={"status":"error","message":"No prior session"}
+
+    return json.dumps(result).encode('utf-8')
+
+def ProcessAI(addr, payload, user_id):
     try:
         # Clean input using CoreFunctions
         data = json.loads(payload)
 
         # Extract the message for the AI model
         user_text = data.get("message", "")
-        user_id = data.get("user_id", "web_user")
+        # user_id = data.get("user_id", "web_user")
 
         # Normalize text using CoreFunctions
         user_text = CF.DecodeUnicode(user_text)
@@ -123,46 +165,91 @@ def ProcessAI(addr, payload):
 # =============================================================================
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'Servi/' + VERSION
-    sys_version = ''
+    BaseHTTPRequestHandler.server_version='ServiAI/'+VERSION
+    BaseHTTPRequestHandler.sys_version=''
+
+    def log_message(self,format,*args):
+        addr=self.client_address[0]
+        WriteLog(addr, f"{args}")
 
     def do_GET(self):
         addr = self.client_address[0]
 
+        # MUST BE FIRST CHECK
         if not CheckIPaddress(str(addr)):
             self.send_response(403)
             self.end_headers()
             self.wfile.write(NO_HTML.encode('utf-8'))
             return
 
+        user_id = self.headers.get("X-ServiAIOpenSession")
+
+        # Read history from the server
+        if self.path == "/history":
+            if not user_id or user_id == "undefined":
+                res=json.dumps({"status":"error","message":"Missing session ID"}).encode('utf-8')
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(res);
+                return
+            else:
+                res=LoadAIConversation(addr, user_id)
+
+            ln=str(len(res))
+            self.send_response(200)
+            headers=[
+                ("Content-type","application/json"),
+                ("Content-Length",ln),
+                ("Access-Control-Allow-Origin","*") ]
+
+            for k,v in headers:
+                self.send_header(k,v)
+            self.end_headers()
+
+            self.wfile.write(res);
+            return
+
+        # Get index.html
         if self.path == "/" or self.path == "/index.html":
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
             content = FF.ReadFile(UI_HTML_FILE)
             self.wfile.write(content.encode('utf-8') if content else b"UI Missing")
-        else:
-            self.send_response(404)
-            self.wfile.write(NO_HTML.encode('utf-8'))
+            return
+
+        # No matches, fall through 404
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write(NO_HTML.encode('utf-8'))
 
     def do_POST(self):
         addr = self.client_address[0]
 
+        # MUST BE FIRST CHECK
         if not CheckIPaddress(str(addr)):
             self.send_response(403)
             self.end_headers()
             return
 
+        user_id = self.headers.get("X-ServiAIOpenSession")
+
         if self.path == "/chat":
+            if not user_id or user_id == "undefined":
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'Missing session ID')
+                return
+
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
 
-            content_len = int(self.headers.get('content-length', 0))
-            payload = self.rfile.read(content_len).decode('utf-8')
+            content_len=int(self.headers.get('content-length', 0))
+            payload=self.rfile.read(content_len).decode('utf-8')
 
             # Child fork handles this blocking call
-            res = ProcessAI(addr, payload)
+            res = ProcessAI(addr, payload, user_id)
             if res is None:
                 res=b'Service did not respond.'
 
@@ -196,4 +283,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+###
+### End Program
+###
 

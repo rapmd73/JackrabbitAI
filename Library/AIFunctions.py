@@ -184,6 +184,15 @@ class Agent:
     def Timeout(self,timeout):
         self.timeout=timeout
 
+    # Set the memory and timing locations separately
+
+    def SetMemory(self,memory=None,timing=None):
+        if memory is not None:
+            self.MemoryLocation=memory
+        if timing is not None:
+            self.TimingLocation=timing
+        FF.mkdir(os.path.dirname(self.MemoryLocation))
+
     # The `SetStorage` function is a method that sets the storage locations for
     # memory and timing files within an object. It takes two optional
     # parameters, `user` and `userhome`, which determine the directory where
@@ -197,6 +206,12 @@ class Agent:
     # it if necessary using `FF.mkdir`.
 
     def SetStorage(self,user=None,userhome=None):
+        # Shouldn't happen, but possible is a pre-user root environment where
+        # SetMemory is used.
+
+        if not user and not userhome:
+            return
+
         # Set user and userhome
         self.user=user
         self.userhome=userhome
@@ -247,11 +262,12 @@ class Agent:
 
     # Put a memory element into the AI memory data
 
-    def Put(self,role,data):
+    def Put(self,role,data,reset=False):
+        if reset:
+            self.Memory=[]
+
         self.Memory.append({ "role":role,"content":data,
-            "engine":self.engine,
-            "model":self.model,
-            "encoding":self.encoding,
+            "engine":self.engine,"model":self.model,"encoding":self.encoding,
             "tokens":self.GetTokenCount(data) })
 
     def UpdateLast(self,role,data):
@@ -371,7 +387,7 @@ class Agent:
     @DF.function_trapper(None)
     def MaintainTokenLimit(self):
         def count_tokens():
-            return sum(message['tokens'] for message in self.Memory)
+            return sum(message['tokens'] for message in messages)
 
         # Make a separate working copy of the original messages.
         messages=self.Memory.copy()
@@ -524,7 +540,7 @@ class Agent:
             SystemRole=self.GetPersona(self.persona)
         else:
             SystemRole='You are a helpful assistant.'
-        self.Put("system", SystemRole)
+        self.Put("system", SystemRole, reset=True)
 
         # Read any existing memory if not in isolation
         if not self.isolation:

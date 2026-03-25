@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Jackrabbit AI Relay Control</title>
+    <title>ServiAI Chat</title>
 
     <!-- Markdown + Sanitizer -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -47,7 +47,7 @@
 <body>
 
     <div id="chat-window">
-        <div class="bubble assistant">Relay Secure. Select your Engine and Model below to begin.</div>
+        <div class="bubble assistant">Select your Engine and Model below to begin.</div>
     </div>
 
     <div id="settings-bar">
@@ -89,7 +89,7 @@
     </div>
 
     <div id="input-area">
-        <div id="thinking" class="thinking">Jackrabbit AI is thinking...</div>
+        <div id="thinking" class="thinking">ServiAI processing...</div>
         <textarea id="user-input" placeholder="Type your paragraphs here..."></textarea>
         <div class="controls">
             <span class="hint">Shift+Enter for New Line | Enter to Send</span>
@@ -108,7 +108,65 @@
         const tokenInput = document.getElementById('token-input');
         const personaSelect = document.getElementById('persona-select');
 
-        const userId = "web_user_" + Math.random().toString(36).substring(7);
+        // Session management - added for conversation persistence
+        let sessionId;
+        
+        document.addEventListener("DOMContentLoaded", () => {
+            sessionId = localStorage.getItem("serviai_session");
+            
+            if (!sessionId) {
+                sessionId = "session-" + Date.now() + "-" + Math.random().toString(36).substring(7);
+                localStorage.setItem("serviai_session", sessionId);
+                
+                addBubble("<b>Welcome!</b> Your session started.<br>Select Engine/Model below.", 'assistant');
+                
+                setTimeout(() => chatWindow.scrollTop = chatWindow.scrollHeight, 5);
+            } else {
+                fetchHistory();
+                
+                setTimeout(() => {
+                    chatWindow.scrollTop = chatWindow.scrollHeight;
+                    userInput.focus();
+                    
+                    const lastMsg = document.querySelector("#chat-window .bubble:last-child");
+                    lastMsg?.scrollIntoView({ behavior: "smooth" });
+                }, 5);
+                
+                console.log(`Loaded saved session ${sessionId}`);
+                
+                setTimeout(() => addBubble("<b>Back online!</b>", 'assistant'), 75);
+                
+                setTimeout(() => chatWindow.scrollTop = chatWindow.scrollHeight + 9999, 76);
+                
+                setTimeout(() => addBubble("<small>(Previous responses restored)</small>", 'assistant'), 77);
+                
+                setTimeout(() => {
+                    document.querySelectorAll(".bubble").forEach(b => b.style.opacity = "");
+                }, 78);
+            }
+        });
+
+        function fetchHistory() {
+            try {
+                fetch("/history", {
+                    headers: {
+                        "Accept": "application/json",
+                        "Connection": "keep-alive",
+                        "Pragma": "no-cache",
+                        "Cache-Control": "no-cache",
+                        "X-ServiAIOpenSession": `${sessionId}`
+                    }
+                }).then(r => r.json()).then(d => {
+                    d?.messages?.forEach(m => addBubble(m.content, m.role));
+                    console.log(`Restored ${d.messages?.length || "zero"} prior exchanges`);
+                }).catch(e => {
+                    console.error(`Fetch failed: ${e.message}`);
+                    addBubble(`<small style="color:red">⚠️ Session restore failed</small>`, 'assistant');
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
 
         function addBubble(text, role) {
             const div = document.createElement('div');
@@ -143,7 +201,7 @@
 
             const payload = {
                 message: msg,
-                user_id: userId,
+                user_id: sessionId,  // Using session ID instead of random user ID
                 engine: engineSelect.value,
                 model: modelInput.value,
                 tokens: tokenInput.value,
@@ -160,7 +218,8 @@
             try {
                 const response = await fetch('/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 
+                               'X-ServiAIOpenSession': sessionId },
                     body: JSON.stringify(payload)
                 });
                 
