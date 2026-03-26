@@ -19,7 +19,7 @@ Tokens={}
 # =============================================================================
 BASE_DIR        = '/home/JackrabbitAI/Web'
 LIB_DIR         = '/home/JackrabbitAI/Library'     # From your working example
-CONFIG_DIR      = '/home/JackrabbitAI/Config'
+CONFIG_DIR      = '/home/JackrabbitAI/Web'
 MEMORY_DIR      = '/home/JackrabbitAI/Web/Memory'
 LOG_DIR         = '/home/JackrabbitAI/Web'
 TOKEN_DIR       = '/home/JackrabbitAI/Web'
@@ -39,7 +39,7 @@ import FileFunctions as FF
 import AIFunctions as AI
 
 # Global Security Constants
-VERSION = "0.0.0.0.30"
+VERSION = "0.0.0.0.100"
 NO_HTML = '<html><title>NO!</title><body style="background-color:#ffff00;display:flex;width:100vw;height:100vh;align-items:center;justify-content:center"><h1 style="color:#ff0000;font-weight:1000;font-size:10rem">NO!</h1></body></html>'
 
 # =============================================================================
@@ -58,10 +58,12 @@ def WriteLog(addr, msg):
     print(f'{time_str} {addr:16} {l_str} {msg}')
 
 def CheckIPaddress(addr):
-    return True
     if os.path.exists(IP_LIST_FILE):
         ips = FF.ReadFile2List(IP_LIST_FILE)
-        return ips and addr in ips
+        if ips!=[]:
+            for i in ips:
+                if addr.startswith(i.strip()):
+                    return True
     return False
 
 # =============================================================================
@@ -160,6 +162,31 @@ def ProcessAI(addr, payload, user_id):
 
     return json.dumps(result).encode('utf-8')
 
+def EraseMemory(addr, user_id):
+    try:
+        engine=os.getenv('JRAIengine', 'openai')
+        model=os.getenv('JRAImodel', 'gpt-5-nano')
+        tokens=int(os.getenv('JRAItokens', 128000))
+
+        agent = AI.Agent(
+            engine=engine,
+            model=model,
+            maxtokens=tokens,
+            persona='None',
+            user=user_id,
+            userhome=TOKEN_DIR,
+            reset=False,
+            save=True
+        )
+
+        agent.Reset()
+
+        res=json.dumps({"status":"success","message":"Memory erased"}).encode('utf-8')
+    except Exception as err:
+        WriteLog(addr, f"ERASE ERROR: {str(err)}")
+        res=json.dumps({"status":"error","message":"Erase failed"}).encode('utf-8')
+    return res
+
 # =============================================================================
 # 5. SERVER HANDLER
 # =============================================================================
@@ -182,18 +209,21 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(NO_HTML.encode('utf-8'))
             return
 
+        # User ID must be available ALWAYS
+
         user_id = self.headers.get("X-ServiAIOpenSession")
+
+        if self.path!="/" and self.path!="/index.html" \
+        and (not user_id or user_id == "undefined"):
+            res=json.dumps({"status":"error","message":"Missing session ID"}).encode('utf-8')
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(res)
+            return
 
         # Read history from the server
         if self.path == "/history":
-            if not user_id or user_id == "undefined":
-                res=json.dumps({"status":"error","message":"Missing session ID"}).encode('utf-8')
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(res);
-                return
-            else:
-                res=LoadAIConversation(addr, user_id)
+            res=LoadAIConversation(addr, user_id)
 
             ln=str(len(res))
             self.send_response(200)
@@ -234,17 +264,24 @@ class Handler(BaseHTTPRequestHandler):
 
         user_id = self.headers.get("X-ServiAIOpenSession")
 
-        if self.path == "/chat":
-            if not user_id or user_id == "undefined":
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(b'Missing session ID')
-                return
+        if not user_id or user_id == "undefined":
+            res=json.dumps({"status":"error","message":"Missing session ID"}).encode('utf-8')
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        # Erase memory
+        if self.path == "/erase":
+            res=EraseMemory(addr, user_id)
 
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
+            self.wfile.write(res)
+            return
 
+        if self.path == "/chat":
             content_len=int(self.headers.get('content-length', 0))
             payload=self.rfile.read(content_len).decode('utf-8')
 
@@ -253,7 +290,17 @@ class Handler(BaseHTTPRequestHandler):
             if res is None:
                 res=b'Service did not respond.'
 
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+
             self.wfile.write(res)
+            return
+
+        # No matches, fall through 404
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write(NO_HTML.encode('utf-8'))
 
 class ForkingSimpleServer(ForkingMixIn, HTTPServer):
     pass

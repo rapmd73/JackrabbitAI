@@ -93,7 +93,10 @@
         <textarea id="user-input" placeholder="Type your paragraphs here..."></textarea>
         <div class="controls">
             <span class="hint">Shift+Enter for New Line | Enter to Send</span>
-            <button id="send-btn">Send</button>
+            <div style="display:flex; gap:8px;">
+                <button id="erase-btn" style="background:#b00020;">Erase</button>
+                <button id="send-btn">Send</button>
+            </div>
         </div>
     </div>
 
@@ -101,6 +104,7 @@
         const chatWindow = document.getElementById('chat-window');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
+        const eraseBtn = document.getElementById('erase-btn');
         const thinking = document.getElementById('thinking');
 
         const engineSelect = document.getElementById('engine-select');
@@ -108,81 +112,32 @@
         const tokenInput = document.getElementById('token-input');
         const personaSelect = document.getElementById('persona-select');
 
-        // Session management - added for conversation persistence
         let sessionId;
-        
+
         document.addEventListener("DOMContentLoaded", () => {
             sessionId = localStorage.getItem("serviai_session");
-            
+
             if (!sessionId) {
                 sessionId = "session-" + Date.now() + "-" + Math.random().toString(36).substring(7);
                 localStorage.setItem("serviai_session", sessionId);
-                
-                addBubble("<b>Welcome!</b> Your session started.<br>Select Engine/Model below.", 'assistant');
-                
-                setTimeout(() => chatWindow.scrollTop = chatWindow.scrollHeight, 5);
-            } else {
-                fetchHistory();
-                
-                setTimeout(() => {
-                    chatWindow.scrollTop = chatWindow.scrollHeight;
-                    userInput.focus();
-                    
-                    const lastMsg = document.querySelector("#chat-window .bubble:last-child");
-                    lastMsg?.scrollIntoView({ behavior: "smooth" });
-                }, 5);
-                
-                console.log(`Loaded saved session ${sessionId}`);
-                
-                setTimeout(() => addBubble("<b>Back online!</b>", 'assistant'), 75);
-                
-                setTimeout(() => chatWindow.scrollTop = chatWindow.scrollHeight + 9999, 76);
-                
-                setTimeout(() => addBubble("<small>(Previous responses restored)</small>", 'assistant'), 77);
-                
-                setTimeout(() => {
-                    document.querySelectorAll(".bubble").forEach(b => b.style.opacity = "");
-                }, 78);
+                userInput.focus();
             }
-        });
 
-        function fetchHistory() {
-            try {
-                fetch("/history", {
-                    headers: {
-                        "Accept": "application/json",
-                        "Connection": "keep-alive",
-                        "Pragma": "no-cache",
-                        "Cache-Control": "no-cache",
-                        "X-ServiAIOpenSession": `${sessionId}`
-                    }
-                }).then(r => r.json()).then(d => {
-                    d?.messages?.forEach(m => addBubble(m.content, m.role));
-                    console.log(`Restored ${d.messages?.length || "zero"} prior exchanges`);
-                }).catch(e => {
-                    console.error(`Fetch failed: ${e.message}`);
-                    addBubble(`<small style="color:red">⚠️ Session restore failed</small>`, 'assistant');
-                });
-            } catch (e) {
-                console.error(e);
-            }
-        }
+            fetchHistory();
+        });
 
         function addBubble(text, role) {
             const div = document.createElement('div');
             div.className = `bubble ${role}`;
 
             if (role === 'assistant') {
-                // Render Markdown safely
                 let raw = marked.parse(text, { breaks: true });
                 let safe = DOMPurify.sanitize(raw);
                 div.innerHTML = safe;
 
-                // Automatically detect language from ``` fences for Prism
                 div.querySelectorAll('pre code').forEach((block) => {
                     const langClass = block.className || '';
                     if (!langClass.startsWith('language-')) {
-                        // Default to plain text if no language specified
                         block.className = 'language-none';
                     }
                     Prism.highlightElement(block);
@@ -195,13 +150,35 @@
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
+        async function fetchHistory() {
+            try {
+                const response = await fetch('/history', {
+                    headers: {
+                        'X-ServiAIOpenSession': sessionId
+                    }
+                });
+
+                const data = await response.json();
+
+                chatWindow.innerHTML = '';
+
+                if (data.status === "success" && Array.isArray(data.messages) && data.messages.length > 0) {
+                    data.messages.forEach(msg => addBubble(msg.content, msg.role));
+                } else {
+                    addBubble("Select your Engine and Model below to begin.", 'assistant');
+                }
+            } catch (e) {
+                chatWindow.innerHTML = '';
+                addBubble("Fatal: Could not load chat history.", 'assistant');
+            }
+        }
+
         async function send() {
             const msg = userInput.value.trim();
             if (!msg) return;
 
             const payload = {
                 message: msg,
-                user_id: sessionId,  // Using session ID instead of random user ID
                 engine: engineSelect.value,
                 model: modelInput.value,
                 tokens: tokenInput.value,
@@ -210,19 +187,22 @@
 
             addBubble(msg, 'user');
             userInput.value = '';
-            
+
             userInput.disabled = true;
             sendBtn.disabled = true;
+            eraseBtn.disabled = true;
             thinking.style.display = 'block';
 
             try {
                 const response = await fetch('/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 
-                               'X-ServiAIOpenSession': sessionId },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-ServiAIOpenSession': sessionId
+                    },
                     body: JSON.stringify(payload)
                 });
-                
+
                 const data = await response.json();
                 addBubble(data.reply || "Error: " + (data.message || "Unknown error"), 'assistant');
             } catch (e) {
@@ -230,12 +210,51 @@
             } finally {
                 userInput.disabled = false;
                 sendBtn.disabled = false;
+                eraseBtn.disabled = false;
+                thinking.style.display = 'none';
+                userInput.focus();
+            }
+        }
+
+        async function eraseChat() {
+            if (!confirm("Erase this chat memory?")) return;
+
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            eraseBtn.disabled = true;
+            thinking.style.display = 'block';
+
+            try {
+                const response = await fetch('/erase', {
+                    method: 'POST',
+                    headers: {
+                        'X-ServiAIOpenSession': sessionId
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.status === "success") {
+                    chatWindow.innerHTML = '';
+                    addBubble("Chat memory erased.", 'assistant');
+                    location.reload();
+                } else {
+                    addBubble("Error: " + (data.message || "Erase failed"), 'assistant');
+                }
+            } catch (e) {
+                addBubble("Fatal: Could not erase chat memory.", 'assistant');
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                eraseBtn.disabled = false;
                 thinking.style.display = 'none';
                 userInput.focus();
             }
         }
 
         sendBtn.onclick = send;
+        eraseBtn.onclick = eraseChat;
+
         userInput.onkeydown = (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
