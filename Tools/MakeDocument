@@ -86,7 +86,7 @@ def main():
             print("Role file not found")
             sys.exit(0)
 
-    agent=AI.Agent(engine=engine,model=model,maxtokens=mt,persona=persona,reset=ResetMemory,save=SaveMemory,isolation=NoMemory,maxrespsize=maxresp)
+    agent=AI.Agent(engine=engine,model=model,maxtokens=mt,persona=persona,reset=ResetMemory,save=SaveMemory,isolation=NoMemory,maxrespsize=maxresp,usertokens='/home/JackrabbitAI/Tokens')
 
     # The only difference between an AI model and an AI agent is the loop.
 
