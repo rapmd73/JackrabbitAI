@@ -52,6 +52,7 @@
 import sys
 import os
 os.environ["TOGETHER_NO_BANNER"]="1"
+import pwd
 import io
 import copy
 import itertools
@@ -108,7 +109,8 @@ class Agent:
     # interactions with an AI API, controlling aspects such as memory usage,
     # response timing, and isolation.
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False):
+        self.usertokens=usertokens  # explicit path to tokens. OVERIDE user area
         self.AIError=False          # Error in the AI engine, breaks retry
         self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
         self.engine=engine.lower()  # AI engine for a memory item (token count)
@@ -206,39 +208,42 @@ class Agent:
     # it if necessary using `FF.mkdir`.
 
     def SetStorage(self,user=None,userhome=None):
-        # Shouldn't happen, but possible is a pre-user root environment where
-        # SetMemory is used.
-
-        if not user and not userhome:
-            return
-
-        # Set user and userhome
-        self.user=user
-        self.userhome=userhome
-
-        # if $HOME is not defined
-        self.MemoryLocation=f"/home/JackrabbitAI/Memory/NoUser.memory"
-        self.TimingLocation=f"/home/JackrabbitAI/Memory/NoUser.timing"
-
         # Check userhome. This overrides the entire user system,
         # setting the default directory to the program.
 
-        if userhome!=None:
+        if user is None and userhome is not None:
+            self.user=user
+            self.userhome=userhome
             self.MemoryLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.memory"
             self.TimingLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.timing"
+            FF.mkdir(os.path.dirname(self.MemoryLocation))
             return
 
+        # Get the $USER environment
+
+        if not user:
+            user=os.environ.get('USER')
+
+        # Set user and userhome
+        self.user=user
+        self.userhome=os.environ.get('HOME')
+
         # Figure out where to store the memory files
-        if user==None:
-            home=os.environ.get('HOME')
-            if home:
-                self.MemoryLocation=f"{home}/.JackrabbitAI/Memory/{os.path.basename(CF.RunningName)}.memory"
-                self.TimingLocation=f"{home}/.JackrabbitAI/Memory/{os.path.basename(CF.RunningName)}.timing"
-        else:
-            # ADD: storage location
-            self.MemoryLocation=f"/home/JackrabbitAI/Memory/{user}.memory"
-            self.TimingLocation=f"/home/JackrabbitAI/Memory/{user}.timing"
-        FF.mkdir(os.path.dirname(self.MemoryLocation))
+        if self.userhome is None and self.user is not None:
+            try:
+                self.userhome=pwd.getpwnam(self.user).pw_dir
+            except:
+                self.userhome=None
+
+            if self.userhome:
+                self.MemoryLocation=f"{self.userhome}/.JackrabbitAI/Memory/{os.path.basename(CF.RunningName)}.memory"
+                self.TimingLocation=f"{self.userhome}/.JackrabbitAI/Memory/{os.path.basename(CF.RunningName)}.timing"
+                FF.mkdir(os.path.dirname(self.MemoryLocation))
+                return
+
+        # if user and userhome are NOT defined
+        self.MemoryLocation=f"/home/JackrabbitAI/Memory/NoUser.memory"
+        self.TimingLocation=f"/home/JackrabbitAI/Memory/NoUser.timing"
 
     # Reset AI memory and erase file.
 
@@ -357,7 +362,10 @@ class Agent:
         elif self.engine=='huggingface':
             enc=AutoTokenizer.from_pretrained(self.model)
         elif self.engine=='cohere':
-            Tokens=FF.ReadTokens(userhome=self.userhome)
+            if self.usertokens is not None:
+                Tokens=FF.ReadTokens(userhome=self.usertokens)
+            else:
+                Tokens=FF.ReadTokens(userhome=self.userhome)
             enc=cohere.ClientV2(api_key=Tokens['Cohere'])
 
         # Calculate current tokens in data
@@ -444,7 +452,10 @@ class Agent:
     @DF.function_trapper(None)
     def JumpTable(self,messages,engine,model,freqpenalty,temperature,timeout,seed=0,mt=2048):
         # Read tokens
-        Tokens=FF.ReadTokens(userhome=self.userhome)
+        if self.usertokens is not None:
+            Tokens=FF.ReadTokens(userhome=self.usertokens)
+        else:
+            Tokens=FF.ReadTokens(userhome=self.userhome)
 
         # Add a test that the token is actually available
 

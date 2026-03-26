@@ -127,7 +127,11 @@ def main():
     if CF.IsSTDIN():
         input=sys.stdin.read().replace('\n','\\n').replace('"',"'")
 
-    agent=AI.Agent(engine=engine,model=model,maxtokens=mt,persona=persona,reset=ResetMemory,save=SaveMemory,isolation=NoMemory,maxrespsize=maxresp)
+    # Demonstrates tokens location override. This is useful is a company or on an
+    # isolated server (single purpose/user) where many programs may share the same
+    # tokens.
+
+    agent=AI.Agent(engine=engine,model=model,maxtokens=mt,persona=persona,reset=ResetMemory,save=SaveMemory,isolation=NoMemory,maxrespsize=maxresp,usertokens='/home/JackrabbitAI/Tokens')
 
     # Get the response from the AI
 
