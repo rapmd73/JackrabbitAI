@@ -121,6 +121,32 @@ class Agent:
             "Think carefully before responding, but do not dump long hidden reasoning or verbose process unless it is actually useful. Instead, present concise rationale, key steps, or short explanations that help the user understand the result. If the request is underspecified, make the best reasonable assumption and state it briefly. If that would likely mislead the user, ask one short clarifying question instead. If user constraints conflict, prioritize correctness and explicitly note the conflict.\n\n"+ \
             "Follow the user’s constraints closely, but do not validate false premises or reinforce bad reasoning. If the user wants something creative, be imaginative within their boundaries. If the user wants something technical, be precise and explicit. If there are several valid approaches, present the best one first, then mention strong alternatives briefly. Avoid robotic phrases, empty praise, canned politeness, and repetitive disclaimers. Ensure outputs are directly usable and, when applicable, include simple verification steps or examples so results can be tested. Your goal is to be a useful, intelligent counterpart: clear, grounded, honest, and effective."
 
+        self.AIJumpTable = {
+            'openai': self.GetOpenAI,
+            'mistral': self.GetMistral,
+            'googleai': self.GetGoogleAI,
+            'xai': self.GetxAI,
+            'cohere': self.GetCohere,
+            'togetherai': self.GetTogetherAI,
+            'ollama': self.GetOllama,
+            'openrouter': self.GetOpenRouter,
+            'anthropic': self.GetAnthropic,
+            'perplexity': self.GetPerplexity,
+            'huggingface': self.GetHuggingFace }
+        self.AITokenMap = {
+            'openai': 'OpenAI',
+            'mistral': 'Mistral',
+            'googleai': 'GoogleAI',
+            'xai': 'xAI',
+            'cohere': 'Cohere',
+            'togetherai': 'TogetherAI',
+            'ollama': 'Ollama',
+            'openrouter': 'OpenRouter',
+            'anthropic': 'Anthropic',
+            'perplexity': 'Perplexity',
+            'huggingface': 'HuggingFace' }
+
+
         self.usertokens=usertokens  # explicit path to tokens. OVERIDE user area
         self.AIError=False          # Error in the AI engine, breaks retry
         self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
@@ -450,20 +476,24 @@ class Agent:
 
         return NewMessages,current_tokens
 
-    # The `JumpTable` function is a method that appears to be part of a class,
-    # responsible for handling requests to various AI engines. It takes in
-    # several parameters, including `messages`, `engine`, `model`,
-    # `freqpenalty`, `temperature`, `timeout`, and optional parameters `seed`
-    # and `mt`. The function reads tokens from a file, then uses a series of
-    # if-elif statements to determine which AI engine to interact with based on
-    # the value of the `engine` parameter. Depending on the engine, it calls a
-    # corresponding method (e.g. `GetOpenAI`, `GetTogetherAI`, etc.) to
-    # retrieve a response and completion, handling exceptions by setting the
-    # response and completion to None if an error occurs. If the engine is not
-    # recognized, it also sets the response and completion to None.
+    # This function prepares and sends a request to an AI service, then captures
+    # the service’s reply. First it loads API tokens (credentials) from a
+    # user-specific file so the program can authenticate with external AI engines.
+    # If a token file location wasn’t explicitly provided, it falls back to a
+    # default location.
 
-    @DF.function_trapper(None)
-    def JumpTable(self,messages,engine,model,freqpenalty,temperature,timeout,seed=0,mt=2048):
+    # Next it checks whether the requested AI engine is supported and that a
+    # matching token is available. If so, it builds a set of parameters—like the
+    # conversation messages, model name, and other behaviour settings—and calls the
+    # appropriate engine-specific routine to get a response. It also handles a
+    # couple of engine-specific options when needed.
+
+    # If the engine is not recognized or any error occurs while calling the
+    # service, the function records that no response was obtained and prints a
+    # short diagnostic message pointing to the problem (for example, a missing or
+    # invalid token).
+
+    @DF.function_trapper(None) def JumpTable(self,messages,seed=0,mt=2048):
         # Read tokens
         if self.usertokens is not None:
             Tokens=FF.ReadTokens(userhome=self.usertokens)
@@ -473,30 +503,22 @@ class Agent:
         # Add a test that the token is actually available
 
         try:
-            if self.engine=='openai':
-                self.response,self.completion=self.GetOpenAI(Tokens['OpenAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='mistral':
-                self.response,self.completion=self.GetMistral(Tokens['Mistral'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='googleai':
-                self.response,self.completion=self.GetGoogleAI(Tokens['GoogleAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,UseOpenAI=self.UseOpenAI)
-            elif self.engine=='xai':
-                self.response,self.completion=self.GetxAI(Tokens['xAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='cohere':
-                self.response,self.completion=self.GetCohere(Tokens['Cohere'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='togetherai':
-                self.response,self.completion=self.GetTogetherAI(Tokens['TogetherAI'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='ollama':
-                self.response,self.completion=self.GetOllama(Tokens['Ollama'],messages,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=mt)
-            elif self.engine=='openrouter':
-                self.response,self.completion=self.GetOpenRouter(Tokens['OpenRouter'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='anthropic':
-                self.response,self.completion=self.GetAnthropic(Tokens['Anthropic'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='perplexity':
-                self.response,self.completion=self.GetPerplexity(Tokens['Perplexity'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            elif self.engine=='huggingface':
-                self.response,self.completion=self.GetHuggingFace(Tokens['HuggingFace'],messages,self.model,self.freqpenalty,self.temperature,self.timeout)
-            # Engine not recognized.
-            else:
+            if self.engine in self.AIJumpTable and self.engine in self.AITokenMap:
+                params={}
+                params["apikey"]=Tokens[self.AITokenMap[self.engine]]
+                params["messages"]=messages
+                params["model"]=self.model
+                params["freqpenalty"]=self.freqpenalty
+                params["temperature"]=self.temperature
+                params["timeout"]=self.timeout
+
+                if self.engine=='ollama':
+                    params['mt']=mt
+                if self.engine=='googleai':
+                    params['UseOpenAI']=self.UseOpenAI
+
+                self.response,self.completion=self.AIJumpTable[self.engine](**params)
+            else:   # Engine not recognized.
                 self.response=None
                 self.completion=None
         except Exception as err:
@@ -588,7 +610,7 @@ class Agent:
         self.response=None
         self.AIError=False
         while self.response==None:
-            self.JumpTable(wm,self.engine,self.model,self.freqpenalty,self.temperature,self.timeout,seed=self.seed,mt=self.maxtokens)
+            self.JumpTable(wm)
 
             # AI error, such as prohibited content, breaks retry loop
             if self.AIError:
@@ -735,93 +757,6 @@ class Agent:
 
         response=completion.choices[0].message.content.strip()
         return response,completion
-
-    """ OLD VERSION
-    @DF.function_trapper(None)
-    def GetGoogleAI(self,apikey,messages,model,freqpenalty,temperature,timeout,UseOpenAI=False):
-        # Sub functions
-        def PrepareGeminiHistory(messages):
-            # (Conversion function remains the same)
-            gemini_messages = []
-            system_instruction = None
-            for message in messages:
-                role = message.get("role")
-                content = message.get("content")
-                if role == "system":
-                    system_instruction = content
-                elif role == "user":
-                    gemini_messages.append({"role": "user", "parts": [content]})
-                elif role == "assistant":
-                    gemini_messages.append({"role": "model", "parts": [content]})
-            return system_instruction, gemini_messages
-
-        # function code
-
-        safety_settings=[
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}]
-
-        if UseOpenAI==True:
-            # Works exceptionally well but does not allow disabiling the safety settings
-            clientAI=openai.OpenAI(api_key=apikey,base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
-
-            try:
-                completion=clientAI.chat.completions.create(
-                        model=model,
-                        frequency_penalty=freqpenalty,
-                        temperature=temperature,
-                        messages=messages,
-                        timeout=timeout
-                    )
-            except:
-                completion=clientAI.chat.completions.create(
-                        model=model,
-                        temperature=temperature,
-                        messages=messages,
-                        timeout=timeout
-                    )
-            clientAI.close()
-
-            self.stop=completion.choices[0].finish_reason.lower()
-            if self.stop!='stop':
-                self.AIError=True
-
-            response=completion.choices[0].message.content.strip()
-            return response,completion
-        else:
-            # Use Gemini native code
-            sysmsg,history=PrepareGeminiHistory(messages)
-            if sysmsg==None:
-                sysmsg="You are a helpful assistant"
-
-            if model=='gemini-2.5-flash-lite':
-                gencfg=genai.GenerationConfig(temperature=temperature)
-            else:
-                gencfg=genai.GenerationConfig(temperature=temperature,frequency_penalty=freqpenalty)
-
-            genai.configure(api_key=apikey)
-            model = genai.GenerativeModel(
-                model_name=model,
-                system_instruction=sysmsg,
-                safety_settings=safety_settings,
-                generation_config=gencfg)
-            chat=model.start_chat(history=history)
-
-            prompt=history[-1]['parts'][0]
-            completion=chat.send_message(prompt)
-
-            # STOP is the regular finish reason when no errors
-            self.stop=completion.candidates[0].finish_reason.name.lower()
-            if self.stop!="stop":
-                self.AIError=True
-                response=None
-            else:
-                response=completion.text
-
-            return response,completion
-    """
 
     @DF.function_trapper(None)
     def GetGoogleAI(self, apikey, messages, model, freqpenalty, temperature, timeout, UseOpenAI=False):

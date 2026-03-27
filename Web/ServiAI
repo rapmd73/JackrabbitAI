@@ -52,7 +52,7 @@ def WriteLog(addr, msg):
     load = CF.GetLoadAVG()
     l_str = f"[{load[0]},{load[1]},{load[2]}]" if load else "[0,0,0]"
     time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-#    FF.AppendFile(LOG_FILE, f'{time_str} {addr:16} {l_str} {msg}\n')
+    FF.AppendFile(LOG_FILE, f'{time_str} {addr:16} {l_str} {msg}\n')
     print(f'{time_str} {addr:16} {l_str} {msg}')
 
 def CheckIPaddress(addr):
