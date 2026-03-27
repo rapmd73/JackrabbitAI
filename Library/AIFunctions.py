@@ -128,6 +128,7 @@ class Agent:
             'xai': self.GetxAI,
             'cohere': self.GetCohere,
             'togetherai': self.GetTogetherAI,
+            'nvidia': self.GetNVidia,
             'ollama': self.GetOllama,
             'openrouter': self.GetOpenRouter,
             'anthropic': self.GetAnthropic,
@@ -140,6 +141,7 @@ class Agent:
             'xai': 'xAI',
             'cohere': 'Cohere',
             'togetherai': 'TogetherAI',
+            'nvidia': 'NVidia',
             'ollama': 'Ollama',
             'openrouter': 'OpenRouter',
             'anthropic': 'Anthropic',
@@ -493,7 +495,8 @@ class Agent:
     # short diagnostic message pointing to the problem (for example, a missing or
     # invalid token).
 
-    @DF.function_trapper(None) def JumpTable(self,messages,seed=0,mt=2048):
+    @DF.function_trapper(None)
+    def JumpTable(self,messages,seed=0,mt=2048):
         # Read tokens
         if self.usertokens is not None:
             Tokens=FF.ReadTokens(userhome=self.usertokens)
@@ -703,6 +706,25 @@ class Agent:
                 messages=messages,
                 timeout=timeout )
 
+        clientAI.close()
+
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
+            self.AIError=True
+
+        response=completion.choices[0].message.content.strip()
+        return response,completion
+
+    @DF.function_trapper(None)
+    def GetNVidia(self,apikey,messages,model,freqpenalty,temperature,timeout):
+        clientAI=openai.OpenAI(api_key=apikey,base_url="https://integrate.api.nvidia.com/v1")
+        completion=clientAI.chat.completions.create(
+                model=model,
+                frequency_penalty=freqpenalty,
+                temperature=temperature,
+                messages=messages,
+                timeout=timeout
+            )
         clientAI.close()
 
         self.stop=completion.choices[0].finish_reason.lower()
