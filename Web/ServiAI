@@ -12,8 +12,6 @@ from socketserver import ForkingMixIn
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
-Tokens={}
-
 # =============================================================================
 # 1. CENTRALIZED PATH DEFINITIONS
 # =============================================================================
@@ -84,11 +82,11 @@ def LoadAIConversation(addr,user_id):
             model=model,
             maxtokens=tokens,
             persona=persona,
-            user=user_id,
-            userhome=TOKEN_DIR,
             reset=False,
-            save=True
+            save=True,
+            usertokens=TOKEN_DIR
         )
+        agent.SetMemory(memory=MEMORY_DIR)
         agent.Read()
 
         # Read messages
@@ -146,11 +144,11 @@ def ProcessAI(addr, payload, user_id):
             model=model,
             maxtokens=tokens,
             persona=persona,
-            user=user_id,
-            userhome=TOKEN_DIR,
             reset=False,
-            save=True
+            save=True,
+            usertokens=TOKEN_DIR
         )
+        agent.SetMemory(memory=MEMORY_DIR)
 
         # Get response (Blocks in this child process fork)
         response = agent.Response(user_text)
@@ -173,12 +171,11 @@ def EraseMemory(addr, user_id):
             model=model,
             maxtokens=tokens,
             persona='None',
-            user=user_id,
-            userhome=TOKEN_DIR,
             reset=False,
-            save=True
+            save=True,
+            usertokens=TOKEN_DIR
         )
-
+        agent.SetMemory(memory=MEMORY_DIR)
         agent.Reset()
 
         res=json.dumps({"status":"success","message":"Memory erased"}).encode('utf-8')
@@ -306,10 +303,6 @@ class ForkingSimpleServer(ForkingMixIn, HTTPServer):
     pass
 
 def main():
-    global Tokens
-
-    Tokens=FF.ReadTokens(userhome=TOKEN_DIR)
-
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 13131
 
     FF.mkdir(LOG_DIR)
