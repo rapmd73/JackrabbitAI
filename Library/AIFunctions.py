@@ -451,12 +451,12 @@ class Agent:
                 if i<len(messages)-1:
                     if messages[i]['role'].lower()=="user" and messages[i+1]['role'].lower()=="assistant":
                         # Remove the pair (two items)
-                        messages.pop(i,None)
-                        messages.pop(i,None)
+                        messages.pop(i)
+                        messages.pop(i)
                         break
                     elif messages[i]['role'].lower()=="user" and messages[i+1]['role'].lower()=="user":
                         # Remove only one item if two adjacent items are user/user
-                        messages.pop(i,None)
+                        messages.pop(i)
                         break
 
             # Recalculate current tokens after removal
