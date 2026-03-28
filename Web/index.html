@@ -16,32 +16,157 @@
     <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/prism-javascript.min.js"></script>
 
     <style>
-        body { font-family: sans-serif; background: #e5ddd5; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        #chat-window { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-        .bubble { max-width: 85%; padding: 12px; border-radius: 10px; line-height: 1.5; font-size: 14px; }
-        .user { align-self: flex-end; background: #dcf8c6; border-bottom-right-radius: 0; white-space: pre-wrap; }
-        .assistant { align-self: flex-start; background: #fff; border-bottom-left-radius: 0; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        body {
+            font-family: sans-serif;
+            background: #e5ddd5;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #chat-window {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .bubble {
+            max-width: 85%;
+            padding: 12px;
+            border-radius: 10px;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        .user {
+            align-self: flex-end;
+            background: #dcf8c6;
+            border-bottom-right-radius: 0;
+            white-space: pre-wrap;
+        }
+
+        .assistant {
+            align-self: flex-start;
+            background: #fff;
+            border-bottom-left-radius: 0;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+        }
 
         /* Markdown Styling */
         .assistant p { margin: 0 0 8px 0; }
-        .assistant pre { background: #1e1e1e; color: #ddd; padding: 10px; border-radius: 6px; overflow-x: auto; }
-        .assistant code { background: #eee; padding: 2px 4px; border-radius: 4px; }
-        .assistant pre code { background: none; padding: 0; display: block; }
-        .assistant ul, .assistant ol { padding-left: 20px; margin: 5px 0; }
-        .assistant table { border-collapse: collapse; width: 100%; }
-        .assistant th, .assistant td { border: 1px solid #ccc; padding: 6px; }
+        .assistant pre {
+            background: #1e1e1e;
+            color: #ddd;
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        .assistant code {
+            background: #eee;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        .assistant pre code {
+            background: none;
+            padding: 0;
+            display: block;
+        }
+        .assistant ul,
+        .assistant ol {
+            padding-left: 20px;
+            margin: 5px 0;
+        }
+        .assistant table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .assistant th,
+        .assistant td {
+            border: 1px solid #ccc;
+            padding: 6px;
+        }
 
-        #settings-bar { background: #f0f0f0; padding: 10px 15px; display: flex; flex-wrap: wrap; gap: 15px; border-top: 1px solid #ccc; border-bottom: 1px solid #ddd; font-size: 12px; color: #444; }
-        .setting-group { display: flex; flex-direction: column; gap: 3px; }
-        select, input[type="text"] { padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        #settings-bar {
+            background: #f0f0f0;
+            padding: 10px 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            border-top: 1px solid #ccc;
+            border-bottom: 1px solid #ddd;
+            font-size: 12px;
+            color: #444;
+        }
 
-        #input-area { background: #f0f0f0; padding: 15px; display: flex; flex-direction: column; gap: 8px; }
-        textarea { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 10px; outline: none; font-family: sans-serif; font-size: 14px; resize: none; min-height: 80px; }
-        .controls { display: flex; justify-content: space-between; align-items: center; }
-        .hint { font-size: 11px; color: #888; }
-        button { background: #075e54; color: white; border: none; padding: 10px 30px; border-radius: 20px; cursor: pointer; font-weight: bold; }
-        button:disabled { background: #999; }
-        .thinking { font-size: 12px; color: #075e54; display: none; font-weight: bold; }
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        select,
+        input[type="text"] {
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        #input-area {
+            background: #f0f0f0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        textarea {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            outline: none;
+            font-family: sans-serif;
+            font-size: 14px;
+            resize: none;
+            min-height: 80px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hint {
+            font-size: 11px;
+            color: #888;
+        }
+
+        button {
+            background: #075e54;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:disabled {
+            background: #999;
+        }
+
+        .thinking {
+            font-size: 12px;
+            color: #075e54;
+            display: none;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -52,13 +177,13 @@
 
     <div id="settings-bar">
         <div class="setting-group">
-            <label>Engine</label>
+            <label for="engine-select">Engine</label>
             <select id="engine-select">
                 <option value="default" selected>Default</option>
                 <option value="openai">OpenAI</option>
                 <option value="googleai">Gemini</option>
                 <option value="xai">xAI</option>
-                <option value="nvidia">NVidia</option>
+                <option value="nvidia">NVIDIA</option>
                 <option value="openrouter">OpenRouter</option>
                 <option value="togetherai">TogetherAI</option>
                 <option value="huggingface">HuggingFace</option>
@@ -70,17 +195,18 @@
         </div>
 
         <div class="setting-group">
-            <label>Model</label>
-            <input type="text" id="model-input" value="Default" style="width: 120px;">
+            <label for="model-input">Model</label>
+            <input type="text" id="model-input" list="model-list" value="Default" style="width: 180px;">
+            <datalist id="model-list"></datalist>
         </div>
 
         <div class="setting-group">
-            <label>Tokens</label>
+            <label for="token-input">Tokens</label>
             <input type="text" id="token-input" value="Default" style="width: 80px;">
         </div>
 
         <div class="setting-group">
-            <label>Persona</label>
+            <label for="persona-select">Persona</label>
             <select id="persona-select">
                 <option value="None" selected>None</option>
                 <option value="Koiki">Koiki</option>
@@ -110,10 +236,72 @@
 
         const engineSelect = document.getElementById('engine-select');
         const modelInput = document.getElementById('model-input');
+        const modelList = document.getElementById('model-list');
         const tokenInput = document.getElementById('token-input');
         const personaSelect = document.getElementById('persona-select');
 
         let sessionId;
+
+        const engineModels = {
+            openai: [
+                "gpt-5.4",
+                "gpt-5.4-mini",
+                "gpt-5.4-nano",
+                "gpt-4o-mini"
+            ],
+            googleai: [
+                "gemini-3.1-pro",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite"
+            ],
+            xai: [
+                "grok-4.2",
+                "grok-4-1-fast-reasoning"
+            ],
+            nvidia: [
+                "nvidia/nemotron-3-super-120b-a12b"
+            ],
+            openrouter: [
+                "stepfun/step-3.5-flash:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "arcee-ai/trinity-large-preview:free",
+                "z-ai/glm-4.5-air:free"
+            ],
+            togetherai: [
+                "zai-org/GLM-5",
+                "Qwen/Qwen3.5-397B-A17B",
+                "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+            ],
+            huggingface: [
+                "HuggingFaceH4/zephyr-7b-beta"
+            ],
+            cohere: [
+                "command-a-03-2025",
+                "command-r-plus-08-2024",
+                "command-r-08-2024"
+            ],
+            anthropic: [
+                "claude-opus-4-6",
+                "claude-sonnet-4-6",
+                "claude-haiku-4-5-20251001"
+            ],
+            perplexity: [
+                "sonar",
+                "sonar-reasoning-pro"
+            ],
+            mistral: [
+                "mistral-large",
+                "mistral-medium",
+                "mistral-small"
+            ]
+        };
+
+        const modelToEngine = {};
+        for (const [engine, models] of Object.entries(engineModels)) {
+            models.forEach(model => {
+                modelToEngine[model.toLowerCase()] = engine;
+            });
+        }
 
         document.addEventListener("DOMContentLoaded", () => {
             sessionId = localStorage.getItem("serviai_session");
@@ -121,11 +309,41 @@
             if (!sessionId) {
                 sessionId = "session-" + Date.now() + "-" + Math.random().toString(36).substring(7);
                 localStorage.setItem("serviai_session", sessionId);
-                userInput.focus();
             }
 
+            populateModelList(engineSelect.value);
+            userInput.focus();
             fetchHistory();
         });
+
+        function populateModelList(selectedEngine) {
+            modelList.innerHTML = '';
+
+            let models = [];
+
+            if (selectedEngine && selectedEngine !== 'default' && engineModels[selectedEngine]) {
+                models = engineModels[selectedEngine];
+            } else {
+                models = Object.values(engineModels).flat();
+            }
+
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                modelList.appendChild(option);
+            });
+        }
+
+        function syncEngineFromModel() {
+            const typedModel = modelInput.value.trim().toLowerCase();
+            if (!typedModel) return;
+
+            const matchedEngine = modelToEngine[typedModel];
+            if (matchedEngine) {
+                engineSelect.value = matchedEngine;
+                populateModelList(matchedEngine);
+            }
+        }
 
         function addBubble(text, role) {
             const div = document.createElement('div');
@@ -177,6 +395,8 @@
         async function send() {
             const msg = userInput.value.trim();
             if (!msg) return;
+
+            syncEngineFromModel();
 
             const payload = {
                 message: msg,
@@ -252,6 +472,13 @@
                 userInput.focus();
             }
         }
+
+        engineSelect.addEventListener('change', () => {
+            populateModelList(engineSelect.value);
+        });
+
+        modelInput.addEventListener('change', syncEngineFromModel);
+        modelInput.addEventListener('blur', syncEngineFromModel);
 
         sendBtn.onclick = send;
         eraseBtn.onclick = eraseChat;
