@@ -49,6 +49,10 @@
 # efficient, and capable of handling complex conversational workflows while
 # maintaining a clear and organized structure.
 
+# IMPORTANT: This library was designed with the thought process of FORKING to
+# control resource management. There are too many known issues with Python for
+# threading to be considered stable.
+
 import sys
 import os
 os.environ["TOGETHER_NO_BANNER"]="1"
@@ -82,9 +86,19 @@ import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
 
-TOGETHER_NO_BANNER=1
+# Verify that JackrabbitDLM is loaded and running.
+JRDLM=False
+if os.path.exists('/home/JackrabbitDLM/DLMLocker.py'):
+    try:
+        sys.path.append('/home/JackrabbitDLM')
+        import DLMLocker as DLM
+        fw1=DLM.Locker("LockerTest",Timeout=10,Retry=0)
+        if fw1.IsDLM():
+            JRDLM=True
+    except:
+        pass
 
-PersonaConfig="/home/JackrabbitAI/Personas"
+TOGETHER_NO_BANNER=1
 
 # A class makes sense here because of the limited scope of the memory and the
 # neccessity of tracking it as a separation of functionality. The idealization of
@@ -109,7 +123,9 @@ class Agent:
     # interactions with an AI API, controlling aspects such as memory usage,
     # response timing, and isolation.
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=False,RateLimitWait=1000):
+        self.PersonaConfig="/home/JackrabbitAI/Personas"
+
         self.SystemRoleDefault= \
             "You are a capable, practical assistant who helps users think, write, analyze, plan, and solve problems across many domains. Your job is to be clear, accurate, adaptable, and genuinely useful. Focus on the user's real goal, not just the literal wording of the request. When the request is slightly ambiguous, make a reasonable interpretation and help immediately. If a wrong assumption would materially affect correctness, ask one brief clarifying question instead of proceeding.\n\n"+ \
             "Give direct answers first and put the most useful information up front. Be concise by default while still being complete. Expand when the task is complex or when the user wants more depth. Write in natural, clear, specific language. Be professional, calm, and respectful. Avoid stiff, generic, theatrical, sarcastic, flattering, or condescending phrasing. Never use em dashes.\n\n"+ \
@@ -148,7 +164,6 @@ class Agent:
             'perplexity': 'Perplexity',
             'huggingface': 'HuggingFace' }
 
-
         self.usertokens=usertokens  # explicit path to tokens. OVERIDE user area
         self.AIError=False          # Error in the AI engine, breaks retry
         self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
@@ -156,6 +171,7 @@ class Agent:
         self.model=model            # AI model being used
         self.maxtokens=maxtokens    # Maximum number of tokens allowed for a given model
         self.encoding=encoding
+        self.MaxModelExpire=maxmodelexpire
         self.MaxMemory=maxmem
         self.freqpenalty=freqpenalty
         self.temperature=temperature
@@ -174,6 +190,10 @@ class Agent:
         self.maxrespsize=maxrespsize # Some models are prone to "dictionary dumps", reject any response larger then this. 0=no rejection
         self.maxrespretry=maxrespretry # Number of time to retry size rejection
         self.maxrespretrytimeout=maxrespretrytimeout # Number of seconds to wait between retries
+        self.UseRateLimit=UseRateLimit and JRDLM    # Use rate limits only in JRDLM is available
+        self.RateLimitWait=RateLimitWait
+        self.Limiter=None
+        self.ModelLock=None
         self.Memory=[]
 
         if self.engine=='openai' and self.encoding==None:
@@ -182,7 +202,43 @@ class Agent:
             else:
                 self.encoding="cl100k_base"
 
+        if self.UseRateLimit:
+            ln=f"RateLimiter.{self.engine}.{self.model}"
+            self.Limiter=DLM.Locker(ln,ID=ln)
+
+        # Model lock needs to be brutal to ensure each model layer is aggressively
+        # protected. The limit is set be a standard of the LONGEST response I have
+        # seen. (15 minutes for each API)
+
+        if JRDLM:
+            ln=f"Response.{self.engine}.{self.model}"
+            self.ModelLock=DLM.Locker(ln,ID=ln)
+
         self.SetStorage(user,userhome)
+
+    # Set rate limits. The wait is in MILLISECONDS
+
+    def SetRateLimit(self,UseRateLimit=False,RateLimitWait=1000):
+        self.UseRateLimit=UseRateLimit
+        self.RateLimitWait=RateLimitWait
+
+    # Rate limit locking using DLM. The wait is in MILLISECONDS
+
+    # Forced Wait forces the waiting period. With NVidia, and similar, you don't
+    # need to wait beyoud the locking process, ie NVidia allows a request for their
+    # free models of 1.5 seconds between API calls. This can be accomplished
+    # WITHOUT a forced wait AFTER the lock has been performed. If this function is
+    # called twice, it waits for the lock ti expire, creating the effect needed
+    # without extra delay.
+
+    def EnforceRatelimit(self, ForcedWait=False):
+        if self.UseRateLimit:
+            expite=self.RateLimitWait/1000
+            while self.Limiter.Lock(expire=expire)!='locked':
+                CF.ElasticSleep(expire)
+            if ForcedWait:
+                CF.ElasticSleep(expire)
+                self.Limiter.Unlock()
 
     # Change the engine
 
@@ -578,6 +634,11 @@ class Agent:
 
     @DF.function_trapper(None)
     def Response(self,input):
+        # Lock the model
+
+        if self.ModelLock:
+            self.ModelLock.Lock(expire=self.MaxModelExpire)
+
         # Reset the memory if needed
 
         if self.reset:
@@ -613,6 +674,7 @@ class Agent:
         self.response=None
         self.AIError=False
         while self.response==None:
+            self.EnforceRatelimit()
             self.JumpTable(wm)
 
             # AI error, such as prohibited content, breaks retry loop
@@ -664,20 +726,25 @@ class Agent:
         if self.timing:
             FF.AppendFile(self.TimingLocation,f"{datetime.datetime.fromtimestamp(startTime).strftime('%Y-%m-%d %H:%M:%S')} {self.engine} {self.model} {endTime-startTime:.6f}\n")
 
-        # if response is empty exit early, don't save empty response.
+        # Check and write the response
 
-        if self.response==None:
-            return None
+        if self.response is not None:
+            # Add the new response to AI memory
+            self.Put("assistant",self.response)
 
-        # Add the new response to AI memory
-        self.Put("assistant",self.response)
+            # Update and add the raw response
+            self.UpdateLast("result",str(self.completion))
 
-        # Update and add the raw response
-        self.UpdateLast("result",str(self.completion))
+            # Save to disk
+            if self.save and not self.isolation:
+                self.Write()
 
-        # Save to disk
-        if self.save and not self.isolation:
-            self.Write()
+        # Unock the model
+
+        if self.ModelLock:
+            self.ModelLock.Unlock()
+
+        # response can be None
 
         return self.response
 
@@ -1102,22 +1169,22 @@ class Agent:
     def GetPersona(self,basename,channel=None,nsfw=False):
         if channel:
             # NSFW channel version
-            refname=f"{PersonaConfig}/{basename}/{basename}.{channel}.system.nsfw"
+            refname=f"{self.PersonaConfig}/{basename}/{basename}.{channel}.system.nsfw"
             if nsfw and os.path.exists(refname):
                 return FF.ReadFile(refname).replace('\n','\\n').replace("'","\'").replace('"',"'").strip()
 
             # SFW channel version
-            refname=f"{PersonaConfig}/{basename}/{basename}.{channel}.system"
+            refname=f"{self.PersonaConfig}/{basename}/{basename}.{channel}.system"
             if os.path.exists(refname):
                 return FF.ReadFile(refname).replace('\n','\\n').replace("'","\'").replace('"',"'").strip()
 
         # NSFW global version
-        refname=f"{PersonaConfig}/{basename}/{basename}.system.nsfw"
+        refname=f"{self.PersonaConfig}/{basename}/{basename}.system.nsfw"
         if nsfw and os.path.exists(refname):
             return FF.ReadFile(refname).replace('\n','\\n').replace("'","\'").replace('"',"'").strip()
 
         # SFW global version
-        refname=f"{PersonaConfig}/{basename}/{basename}.system"
+        refname=f"{self.PersonaConfig}/{basename}/{basename}.system"
         if os.path.exists(refname):
             return FF.ReadFile(refname).replace('\n','\\n').replace("'","\'").replace('"',"'").strip()
 
