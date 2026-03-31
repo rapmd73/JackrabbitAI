@@ -164,6 +164,10 @@ class Agent:
             'perplexity': 'Perplexity',
             'huggingface': 'HuggingFace' }
 
+        self.user=None              # User name
+        self.userhome=None          # User home directory
+        self.MemoryLocation=None    # Memory files location
+        self.TimingLocation=None    # Timing file location
         self.usertokens=usertokens  # explicit path to tokens. OVERIDE user area
         self.AIError=False          # Error in the AI engine, breaks retry
         self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
@@ -206,15 +210,23 @@ class Agent:
             ln=f"RateLimiter.{self.engine}.{self.model}"
             self.Limiter=DLM.Locker(ln,ID=ln)
 
+        # Set user information
+
+        self.SetStorage(user,userhome)
+
         # Model lock needs to be brutal to ensure each model layer is aggressively
         # protected. The limit is set be a standard of the LONGEST response I have
         # seen. (15 minutes for each API)
 
         if JRDLM:
             ln=f"Response.{self.engine}.{self.model}"
+            if self.user:
+                ln=f"Response.{self.engine}.{self.model}.{self.user}"
+            elif self.userhome:
+                ln=f"Response.{self.engine}.{self.model}.{self.userhome}"
+            elif self.MemoryLocation:
+                ln=f"Response.{self.engine}.{self.model}.{self.MemoryLocation}"
             self.ModelLock=DLM.Locker(ln,ID=ln)
-
-        self.SetStorage(user,userhome)
 
     # Set rate limits. The wait is in MILLISECONDS
 
