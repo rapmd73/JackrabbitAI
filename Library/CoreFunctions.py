@@ -133,7 +133,7 @@ def DecodeUnicode(text):
 @DF.function_trapper('')
 def Yesterday(ds=None):
     if ds!=None:
-        date=datetime.datetime.strptime(date_str,'%Y-%m-%d')
+        date=datetime.datetime.strptime(ds,'%Y-%m-%d')
     else:
         date=datetime.datetime.now()
     yesterday=date-datetime.timedelta(days=1)

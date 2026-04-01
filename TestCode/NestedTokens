@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+sys.path.append('/home/GitHub/JackrabbitAI/Library')
+import os
+import json
+
+import DecoratorFunctions as DF
+import CoreFunctions as CF
+import FileFunctions as FF
+import AIFunctions as AI
+
+def ReadTokens(gid=None, userhome=None):
+    def CrawlTokens(item):
+        # Handle Strings (The actual check)
+        if isinstance(item, str) and item.lower().startswith('!environment:'):
+            vn=item.split(':', 1)[1].strip()
+            ev=os.getenv(vn)
+            # Return environment variable if it exists, otherwise keep original
+            return ev if ev is not None else item
+
+        # Handle Dictionaries (Recursion)
+        elif isinstance(item, dict):
+            return {k: CrawlTokens(v) for k, v in item.items()}
+
+        # Handle Lists (Recursion - essential for nested JSON)
+        elif isinstance(item, list):
+            return [CrawlTokens(i) for i in item]
+
+        # Handle everything else (ints, bools, etc)
+        return item
+
+    tokens={}
+    ts=CF.TokenStorage
+    if userhome != None:
+        ts=userhome
+
+    if gid == None:
+        tfile=f"{ts}/{os.path.basename(CF.RunningName)}.tokens"
+    else:
+        tfile=f"{ts}/{gid}.tokens"
+
+    if os.path.exists(tfile):
+        # Use your custom File/Core functions to get the buffer
+        buf=CF.jsonFilter(FF.ReadFile(tfile))
+        try:
+            tokens=json.loads(buf)
+        except Exception as err:
+            print(f"Error: token file {tfile} is not in JSON format. {err}")
+            sys.exit(1)
+    else:
+        print(f"Missing token file: {tfile}")
+        sys.exit(1)
+
+    # Run the recursive process on the loaded JSON object
+    return CrawlTokens(tokens)
+
+###
+### Main Code
+###
+
+tokens=ReadTokens(userhome="/home/GitHub/JackrabbitAI/TestCode")
+print(tokens)
+
+###
+### End Code
+###
+

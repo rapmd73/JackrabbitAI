@@ -1,0 +1,5 @@
+{
+    "WidgetAPI":"top secret token",
+    "Ultra":"!environment:PATH",
+    "Complex":{ "ID":"Secret Identity","Secret":"!environment:PATH","Magic":"Super Secret" }
+}

@@ -185,41 +185,47 @@ def ReadFile2List(fname,Unique=True,Delimiter="\n",ForceLower=False,ForceUpper=F
 # with a non-zero status code.
 
 @DF.function_trapper({})
-def ReadTokens(gid=None,userhome=None):
+def ReadTokens(gid=None, userhome=None):
+    def CrawlTokens(item):
+        # Handle Strings (The actual check)
+        if isinstance(item, str) and item.lower().startswith('!environment:'):
+            vn=item.split(':', 1)[1].strip()
+            ev=os.getenv(vn)
+            # Return environment variable if it exists, otherwise keep original
+            return ev if ev is not None else item
+
+        # Handle Dictionaries (Recursion)
+        elif isinstance(item, dict):
+            return {k: CrawlTokens(v) for k, v in item.items()}
+
+        # Handle Lists (Recursion - essential for nested JSON)
+        elif isinstance(item, list):
+            return [CrawlTokens(i) for i in item]
+
+        # Handle everything else (ints, bools, etc)
+        return item
+
     tokens={}
     ts=CF.TokenStorage
-    if userhome!=None:
+    if userhome != None:
         ts=userhome
-    if gid==None:
+
+    if gid == None:
         tfile=f"{ts}/{os.path.basename(CF.RunningName)}.tokens"
     else:
         tfile=f"{ts}/{gid}.tokens"
+
     if os.path.exists(tfile):
+        # Use your custom File/Core functions to get the buffer
+        buf=CF.jsonFilter(ReadFile(tfile))
         try:
-            tokens=json.loads(CF.jsonFilter(ReadFile(tfile)))
+            tokens=json.loads(buf)
         except Exception as err:
-            print("Error token file is not in JSON format.")
+            print(f"Error: token file {tfile} is not in JSON format. {err}")
             sys.exit(1)
     else:
         print(f"Missing token file: {tfile}")
         sys.exit(1)
 
-    # Inspired by SamAcctX
-    for key in tokens:
-        if isinstance(tokens[key],str) and tokens[key].lower().startswith('!environment:'):
-            vn=tokens[key].split(':',1)[1].strip() # Environment variable name
-            ev=os.getenv(vn) # Environment variable contents, if any
-            # Make sre we have an environment variable
-            if ev:
-                tokens[key]=ev
-        elif isinstance(tokens[key],dict):
-            # Search enbeded keys
-            for k in tokens[key]:
-                if isinstance(tokens[key][k],str) and tokens[key][k].lower().startswith('!environment:'):
-                    vn=tokens[key][k].split(':',1)[1].strip() # Environment variable name
-                    ev=os.getenv(vn) # Environment variable contents, if any
-                    # Make sre we have an environment variable
-                    if ev:
-                        tokens[key]=ev
-
-    return tokens
+    # Run the recursive process on the loaded JSON object
+    return CrawlTokens(tokens)
