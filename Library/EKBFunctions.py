@@ -141,21 +141,40 @@ class ExpertKnowledgeBase:
         return words
 
     def Search(self, query):
-        # Reduce the query to keywords
+        def try_path(kw):
+            key = tuple(kw)
+            if key in tried:
+                return None
+            tried.add(key)
+
+            path = os.path.join(self.BASE, self.LANG, *kw)
+
+            if os.path.isfile(path+'.txt'):
+                return FF.ReadFile(path+'.txt').strip()
+            return None
+
         keywords = self.Reduce(query)
 
-        # Build the file path from keywords.
-        # Language is the root level, then keywords as directories.
-        # os.path.join takes each directory as a separate argument.
-        # The * operator unpacks the list into separate arguments.
-        # Example: keywords = ['how', 'cook', 'egg']
-        #          os.path.join(BASE, LANG, 'how', 'cook', 'egg')
-        #          -> /home/JackrabbitAI/ExpertKnowledgeBase/english/how/cook/egg
-        self.kbpath=os.path.join(self.BASE, self.LANG, *keywords)
+        if not keywords:
+            return None
 
-        # Check if the answer file exists, return its contents or None
-        if os.path.isfile(self.kbpath + '.txt'):
-            return FF.ReadFile(self.kbpath + '.txt').strip()
+        self.kbpath = os.path.join(self.BASE, self.LANG, *keywords)
+
+        # Track what we've tried
+        tried = set()
+
+        # Generate all contiguous sub-sequences
+        # Start from end, work backwards: suffixes first, then shorter from front
+        n = len(keywords)
+
+        # Try suffixes of progressively shorter prefixes
+        for start in range(n):
+            for end in range(n, start, -1):
+                subseq = keywords[start:end]
+                result = try_path(subseq)
+                if result:
+                    #kbp = os.path.join(self.BASE, self.LANG, *subseq)
+                    return result
         return None
 
     def Update(self, answer, Overwrite=False):
