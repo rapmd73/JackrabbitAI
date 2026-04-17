@@ -85,6 +85,7 @@ import together
 import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
+import EKBFunctions as EKB
 
 # Verify that JackrabbitDLM is loaded and running.
 JRDLM=False
@@ -123,7 +124,7 @@ class Agent:
     # interactions with an AI API, controlling aspects such as memory usage,
     # response timing, and isolation.
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=False,RateLimitWait=1000):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=False,RateLimitWait=1000,UseEKB=True):
         self.PersonaConfig="/home/JackrabbitAI/Personas"
 
         self.SystemRoleDefault= \
@@ -164,12 +165,13 @@ class Agent:
             'perplexity': 'Perplexity',
             'huggingface': 'HuggingFace' }
 
+        self.UseEKB=UseEKB          # Using the EKB
+        self.AIError=False          # Error in the AI engine, breaks retry
         self.user=None              # User name
         self.userhome=None          # User home directory
         self.MemoryLocation=None    # Memory files location
         self.TimingLocation=None    # Timing file location
         self.usertokens=usertokens  # explicit path to tokens. OVERIDE user area
-        self.AIError=False          # Error in the AI engine, breaks retry
         self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
         self.engine=engine.lower()  # AI engine for a memory item (token count)
         self.model=model            # AI model being used
@@ -183,6 +185,7 @@ class Agent:
         self.timeout=timeout        # Timeout for connection to take place
         self.timing=timing          # Are we timing the AI api call?
         self.persona=persona        # the AI persona
+        self.nsfw=False             # Loaded a NSFW persona
         self.completion=None        # The total return payload
         self.response=None          # The response
         self.stop=None              # The stop reason for the request
@@ -197,7 +200,9 @@ class Agent:
         self.UseRateLimit=UseRateLimit and JRDLM    # Use rate limits only in JRDLM is available
         self.RateLimitWait=RateLimitWait
         self.Limiter=None
-        self.ModelLock=None
+        self.ModelLock=None         # None by default for condirional testing
+        self.discordChannel=None    # No discord channel
+        self.allowNSFW=False        # nfsw roles are NOT allowed
         self.Memory=[]
 
         if self.engine=='openai' and self.encoding==None:
@@ -251,6 +256,17 @@ class Agent:
             if ForcedWait:
                 CF.ElasticSleep(expire)
                 self.Limiter.Unlock()
+
+    # Set discord channel and NSFW allowance
+
+    def Discord(channel,nfsw):
+        self.discordChannel=channel
+        self.allowNSFW=nsfw
+
+    # Set the Persona Config location
+
+    def SetPersonaConfig(pcfg):
+        self.PersonaConfig=pcfg
 
     # Change the engine
 
@@ -517,6 +533,11 @@ class Agent:
         while current_tokens>self.maxtokens:
             for i in range(len(messages)-1):
                 if i<len(messages)-1:
+                    # user/assistant now decoupled
+                    if messages[i]['role'].lower()=="user" or messages[i]['role'].lower()=="assistant":
+                        messages.pop(i)
+                        break
+                    """ Old way - depreciated
                     if messages[i]['role'].lower()=="user" and messages[i+1]['role'].lower()=="assistant":
                         # Remove the pair (two items)
                         messages.pop(i)
@@ -526,6 +547,7 @@ class Agent:
                         # Remove only one item if two adjacent items are user/user
                         messages.pop(i)
                         break
+                    """
 
             # Recalculate current tokens after removal
             current_tokens=count_tokens()
@@ -659,14 +681,28 @@ class Agent:
         # Load the system role only ONCE
 
         if self.persona is not None and self.persona.lower()!="none":
-            SystemRole=self.GetPersona(self.persona)
+            SystemRole=self.GetPersona(self.persona,nfsw=self.allowNSFW,channel=self.discordChannel)
         else:
             SystemRole=self.SystemRoleDefault
-        self.Put("system", SystemRole, reset=True)
+        self.Put("system",SystemRole,reset=True)
 
         # Read any existing memory if not in isolation
         if not self.isolation:
             self.Read()
+
+        knr=None
+        sEKB=None
+        uEKB=None
+        if self.UseEKB:
+            sEKB=EKB.ExpertKnowledgeBase()
+            uEKB=EKB.ExpertKnowledgeBase(base=self.MemoryLocation+'.ekb')
+
+            knr=uEKB.Search(input)
+            if not knr:
+                knr=sEKB.Search(input)
+            if knr:
+                knr="Here is information from an expert knowledge base. You will use this information to build your respose:\n\n"+knr
+                self.Put("assistant",knr)
 
         # Add users input to the memory
         self.Put("user",input)
@@ -741,6 +777,11 @@ class Agent:
         # Check and write the response
 
         if self.response is not None:
+            if self.UseEKB and uEKB and sEKB:
+                if self.save and not self.isolation:
+                    uEKB.Update(self.response)
+                sEKB.Update(self.response)
+
             # Add the new response to AI memory
             self.Put("assistant",self.response)
 
@@ -1114,6 +1155,7 @@ class Agent:
         clientAI=ollama.Client(timeout=timeout)
         completion=clientAI.chat(
                 stream=False,
+                think=False,
                 model=model,
                 options=options,
                 messages=messages
@@ -1177,12 +1219,16 @@ class Agent:
     # ensures the system can gracefully handle configuration scenarios without
     # crashing.
 
+    # NSFW is an honor system approach. There is no real ways for the system to
+    # know if a persona is really safe for work (child friendly).
+
     @DF.function_trapper(None)
     def GetPersona(self,basename,channel=None,nsfw=False):
         if channel:
             # NSFW channel version
             refname=f"{self.PersonaConfig}/{basename}/{basename}.{channel}.system.nsfw"
             if nsfw and os.path.exists(refname):
+                self.nsfw=True
                 return FF.ReadFile(refname).replace('\n','\\n').replace("'","\'").replace('"',"'").strip()
 
             # SFW channel version
@@ -1193,6 +1239,7 @@ class Agent:
         # NSFW global version
         refname=f"{self.PersonaConfig}/{basename}/{basename}.system.nsfw"
         if nsfw and os.path.exists(refname):
+            self.nsfw=True
             return FF.ReadFile(refname).replace('\n','\\n').replace("'","\'").replace('"',"'").strip()
 
         # SFW global version
