@@ -691,18 +691,15 @@ class Agent:
             self.Read()
 
         knr=None
-        sEKB=None
         uEKB=None
         if self.UseEKB:
-            sEKB=EKB.ExpertKnowledgeBase()
-            uEKB=EKB.ExpertKnowledgeBase(base=self.MemoryLocation+'.ekb')
+            uEKB=EKB.ExpertKnowledgeBase(Base=self.MemoryLocation+'.ekb')
 
             knr=uEKB.Search(input)
-            if not knr:
-                knr=sEKB.Search(input)
             if knr:
-                knr="Here is information from an expert knowledge base. You will use this information to build your respose:\n\n"+knr
-                self.Put("assistant",knr)
+                for blob in knr:
+                    ans="The following is verified expert knowledge that serves as the definitive source for this topic. Treat this information as established fact and use it as the foundation for your response. You may rephrase, restructure, and expand upon this knowledge to provide a clear and helpful answer, but do not introduce information that contradicts or conflicts with what is provided here. If the user's question relates to this topic, base your response entirely on this expert knowledge rather than drawing from general training data. Present your answer with confidence, as this knowledge has been verified by domain experts.\n\n"+blob
+                    self.Put("assistant",ans)
 
         # Add users input to the memory
         self.Put("user",input)
@@ -777,11 +774,6 @@ class Agent:
         # Check and write the response
 
         if self.response is not None:
-            if self.UseEKB and uEKB and sEKB:
-                if self.save and not self.isolation:
-                    uEKB.Update(self.response)
-                sEKB.Update(self.response)
-
             # Add the new response to AI memory
             self.Put("assistant",self.response)
 

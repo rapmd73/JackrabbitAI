@@ -5,6 +5,26 @@
 # 2024-2025 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
 
+# Expert Knowledge Base (EKB)
+# Pre-ASK style knowledge base using the filesystem as a directory trie.
+# Manual population, sliding window search, returns all matching knowledge.
+#
+# Example:
+#   "How do I cook an egg?" -> keywords: ['how', 'cook', 'egg']
+#   File path: /tmp/Expert/english/how/cook/egg.txt
+
+import sys
+import os
+
+sys.path.append('/home/JackrabbitAI/Library')
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Jackrabit AI
+# 2024-2025 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
 import sys
 import os
 
@@ -12,21 +32,9 @@ import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
 
-# Expert Knowledge Base (EKB)
-# Pre-ASK style knowledge base using the filesystem as a directory trie.
-# Input is reduced to keywords, each keyword becomes a directory level.
-# The final keyword points to a .txt file containing the answer.
-#
-# Example:
-#   "How do I cook an egg?" -> keywords: ['how', 'cook', 'egg']
-#   File path: /home/JackrabbitAI/ExpertKnowledgeBase/english/how/cook/egg.txt
-
 class ExpertKnowledgeBase:
-    def __init__(self,base=None):
-        # Words that add no value to the search query.
-        # Articles, pronouns, prepositions, auxiliary verbs, etc.
-        # Question words (how, what, when, where, why) are NOT stop words
-        # because they define the context of the query.
+    def __init__(self, Base=None):
+        # Stop words (no search value)
         self.STOP = {'a','an','the','is','are','was','were','be','been','being',
                 'have','has','had','do','does','did','will','would','shall',
                 'should','may','might','must','can','could','i','you','he',
@@ -38,13 +46,42 @@ class ExpertKnowledgeBase:
                 'between','under','again','further','once','here','there',
                 'all','each','every','both','few','more','most','other',
                 'some','such','no','not','only','own','same','than','too',
-                'very'}
+                'very','as',
+                # Common verbs with no search value
+                'said','say','says','told','tell','tells','asked','ask','asks',
+                'went','go','goes','come','comes','came','get','gets','got',
+                'make','makes','made','know','knows','knew','think','thinks','thought',
+                'take','takes','took','see','sees','saw','want','wants','wanted',
+                'use','uses','used','find','finds','found','give','gives','gave',
+                'put','puts','keep','keeps','kept','let','lets','begin','begins','began',
+                'show','shows','showed','hear','hears','heard','play','plays','played',
+                'run','runs','ran','move','moves','moved','live','lives','lived',
+                'believe','believes','believed','bring','brings','brought',
+                'happen','happens','happened','write','writes','wrote',
+                'provide','provides','provided','sit','sits','sat',
+                'stand','stands','stood','lose','loses','lost',
+                'pay','pays','paid','meet','meets','met',
+                'include','includes','included','continue','continues','continued',
+                'set','sets','learn','learns','learned','change','changes','changed',
+                'lead','leads','led','understand','understands','understood',
+                'watch','watches','watched','follow','follows','followed',
+                'stop','stops','stopped','create','creates','created',
+                'speak','speaks','spoke','read','reads','allow','allows','allowed',
+                'add','adds','added','spend','spends','spent','grow','grows','grew',
+                'open','opens','opened','walk','walks','walked','win','wins','won',
+                'offer','offers','offered','remember','remembers','remembered',
+                'love','loves','loved','consider','considers','considered',
+                'appear','appears','appeared','buy','buys','bought',
+                'wait','waits','waited','serve','serves','served',
+                'die','dies','died','send','sends','sent','expect','expects','expected',
+                'build','builds','built','stay','stays','stayed',
+                'fall','falls','fell','cut','cuts','reach','reaches','reached',
+                'kill','kills','killed','remain','remains','remained'}
 
-        # Synonym reduction: maps complex words to simple equivalents.
-        # Applied after depluralization to normalize vocabulary.
+        # Synonym reduction
         self.REDUCE = {
             'acquire': 'get', 'obtain': 'get', 'procure': 'get', 'attain': 'get',
-            'purchase': 'buy', 'procure': 'buy',
+            'purchase': 'buy',
             'commence': 'start', 'begin': 'start', 'initiate': 'start',
             'terminate': 'end', 'finish': 'end', 'conclude': 'end', 'cease': 'end',
             'assist': 'help', 'aid': 'help', 'support': 'help',
@@ -103,107 +140,70 @@ class ExpertKnowledgeBase:
             'certainly': 'yes', 'definitely': 'yes', 'surely': 'yes',
         }
 
-        # Default location and language of the knowledge base
-        self.LANG='english'
-        self.BASE=base if base is not None else '/home/JackrabbitAI/ExpertKnowledgeBase'
-        self.kbpath=None
+        # Configuration
+        self.LANG = 'english'
+        self.BASE=Base if Base is not None else '/home/JackrabbitAI/ExpertKnowledgeBase'
+        FF.mkdir(self.BASE)
 
     def SetLocation(self, path):
         # Set or override the base directory for the knowledge base
         self.BASE=path
 
     def Reduce(self, text):
-        # Turn a natural language query into a list of keywords.
-        # Steps:
-        #   1. Lowercase everything
-        #   2. Strip non-alpha characters
-        #   3. Remove stop words (words with no search value)
-        #   4. Depluralize: -ies -> -y, -ing -> strip, -s -> strip
-        #   5. Synonym reduction: map to simplest equivalent word
+        # Turn text into keywords
         words = []
         for w in text.lower().split():
-            # Keep only letters, strip punctuation
             w = ''.join(c for c in w if c.isalpha())
-            # Skip empty or stop words
             if not w or w in self.STOP:
                 continue
-            # Depluralize in order of specificity
-            if w.endswith('ies') and len(w) > 3:    # berries -> berry
+            if w.endswith('ies') and len(w) > 3:
                 w = w[:-3] + 'y'
-            elif w.endswith('ing') and len(w) > 3:  # cooking -> cook
+            elif w.endswith('ing') and len(w) > 3:
                 w = w[:-3]
-            elif w.endswith('s') and len(w) > 1:    # eggs -> egg
+            elif w.endswith('s') and len(w) > 1:
                 w = w[:-1]
-            # Synonym reduction: map to simplest equivalent
             if w in self.REDUCE:
                 w = self.REDUCE[w]
             words.append(w)
         return words
 
-    def Search(self, query):
-        def try_path(kw):
-            key = tuple(kw)
-            if key in tried:
-                return None
-            tried.add(key)
+    def Search(self, text):
+        # Search with sliding window, return ALL matching knowledge as a list
+        # Start at 10 words, work backwards (more words = more specific)
+        keywords = self.Reduce(text)
 
-            path = os.path.join(self.BASE, self.LANG, *kw)
-
-            if os.path.isfile(path+'.txt'):
-                return FF.ReadFile(path+'.txt').strip()
+        if len(keywords) < 2:
             return None
 
-        keywords = self.Reduce(query)
-
-        if not keywords:
-            return None
-
-        self.kbpath = os.path.join(self.BASE, self.LANG, *keywords)
-
-        # Track what we've tried
+        # Collect all matches (avoid duplicates)
+        matches = []
         tried = set()
 
-        # Generate all contiguous sub-sequences
-        # Start from end, work backwards: suffixes first, then shorter from front
-        n = len(keywords)
+        # Start at 10 words (or max available), work backwards to 2
+        max_window = min(10, len(keywords))
 
-        # Try suffixes of progressively shorter prefixes
-        for start in range(n):
-            for end in range(n, start, -1):
-                subseq = keywords[start:end]
-                result = try_path(subseq)
-                if result:
-                    #kbp = os.path.join(self.BASE, self.LANG, *subseq)
-                    return result
-        return None
+        for window_size in range(max_window, 1, -1):
+            for i in range(len(keywords) - window_size + 1):
+                window = tuple(keywords[i:i + window_size])
 
-    def Update(self, answer, Overwrite=False):
-        if not Overwrite and os.path.exists(self.kbpath+'.txt'):
-            return
+                if window in tried:
+                    continue
+                tried.add(window)
 
-        # Create the directory path if it does not exist
-        os.makedirs(os.path.dirname(self.kbpath), exist_ok=True)
-        # Write the answer to the .txt file
-        FF.WriteFile(self.kbpath+'.txt',answer)
+                # Try all sub-sequences of this window
+                for start in range(len(window)):
+                    for end in range(len(window), start, -1):
+                        subseq = window[start:end]
+                        if len(subseq) < 2:
+                            continue
 
-def TestTheEKB():
-    ekb = ExpertKnowledgeBase()
+                        path = os.path.join(self.BASE, self.LANG, *subseq)
+                        if os.path.exists(path+'.txt'):
+                            content=FF.ReadFile(path+'.txt')
+                            if content and content not in matches:
+                                matches.append(content)
 
-    # Set an answer: search establishes the path, update writes it
-    ekb.Search('How do I cook an egg?')
+        if not matches:
+            return None
 
-    ekb.Search('What is the best way to learn python?')
-
-    # Retrieve answers
-    print(ekb.Search('How do I cook an egg?'))
-    print(ekb.Search('What is the best way to learn python?'))
-
-    # Synonym reduction in action
-    print(ekb.Reduce('How do I acquire a python?'))
-    print(ekb.Reduce('How do I purchase eggs?'))
-    print(ekb.Reduce('How do I commence cooking?'))
-
-    print(ekb.Search('How do I fly a kite?'))  # Returns None, no answer stored
-
-if __name__ == '__main__':
-    TestTheEKB()
+        return matches
