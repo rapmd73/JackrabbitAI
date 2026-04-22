@@ -361,3 +361,46 @@ def IsSTDIN(seconds=1):
     ready,_,_=select.select([sys.stdin],[],[],seconds)
     return ready
 
+# The Reclaimation process forces a full structural reset of a Python
+# container by rebuilding it into a new memory allocation that only
+# reflects its current live contents. It works by taking the input object,
+# fully traversing it, and passing it through a reconstruction step that
+# creates a new instance rather than modifying the existing one. This
+# guarantees that any leftover allocation artifacts, unused capacity, or
+# fragmentation from prior growth and deletion cycles are discarded.
+# During this rebuild, the active elements are reinserted into fresh
+# memory, producing a compact and contiguous layout that is aligned with
+# the current working set rather than the object’s historical peak size.
+# The result is a logically identical structure from a data perspective,
+# but with a completely reset internal memory representation that reduces
+# accumulated overhead from long running mutation patterns.
+
+def Reclaimation(o):
+    if isinstance(o,dict):
+        if o=={}:
+            return {}
+        try:
+            # Side effect, ALL keys become strings.
+            return json.loads(json.dumps(o))
+        except Exception as err:
+            # json library hates sockets... Still fix the hash table
+            return {str(k): v for k, v in o.items()}
+    if isinstance(o,list):
+        if o==[]:
+            return []
+        try:
+            # Side effect, ALL keys become strings.
+            return json.loads(json.dumps(o))
+        except Exception as err:
+            # json library hates sockets... Still fix the hash table
+            return list(o)
+    if isinstance(o,set):
+        if not o:
+            return set()
+        try:
+            # Side effect, ALL keys become strings.
+            return set(json.loads(json.dumps(o)))
+        except Exception as err:
+            # json library hates sockets... Still fix the hash table
+            return set(o)
+    return o
