@@ -252,7 +252,7 @@ class Agent:
 
     def EnforceRatelimit(self, ForcedWait=False):
         if self.UseRateLimit:
-            expite=self.RateLimitWait/1000
+            expire=self.RateLimitWait/1000
             while self.Limiter.Lock(expire=expire)!='locked':
                 CF.ElasticSleep(expire)
             if ForcedWait:
