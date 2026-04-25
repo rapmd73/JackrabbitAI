@@ -124,7 +124,9 @@ class Agent:
     # interactions with an AI API, controlling aspects such as memory usage,
     # response timing, and isolation.
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=False,RateLimitWait=1000,UseEKB=True):
+    # RateLimit is 2 seconds
+
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=True,RateLimitWait=2000,UseEKB=True):
         self.PersonaConfig="/home/JackrabbitAI/Personas"
 
         self.SystemRoleDefault= \
@@ -202,7 +204,7 @@ class Agent:
         self.Limiter=None
         self.ModelLock=None         # None by default for condirional testing
         self.discordChannel=None    # No discord channel
-        self.allowNSFW=False        # nfsw roles are NOT allowed
+        self.allowNSFW=False        # nsfw roles are NOT allowed
         self.Memory=[]
 
         if self.engine=='openai' and self.encoding==None:
@@ -259,7 +261,7 @@ class Agent:
 
     # Set discord channel and NSFW allowance
 
-    def Discord(channel,nfsw):
+    def Discord(channel,nssw):
         self.discordChannel=channel
         self.allowNSFW=nsfw
 
@@ -681,7 +683,7 @@ class Agent:
         # Load the system role only ONCE
 
         if self.persona is not None and self.persona.lower()!="none":
-            SystemRole=self.GetPersona(self.persona,nfsw=self.allowNSFW,channel=self.discordChannel)
+            SystemRole=self.GetPersona(self.persona,nsfw=self.allowNSFW,channel=self.discordChannel)
         else:
             SystemRole=self.SystemRoleDefault
         self.Put("system",SystemRole,reset=True)
