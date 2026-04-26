@@ -145,6 +145,7 @@ class Agent:
             'mistral': self.GetMistral,
             'googleai': self.GetGoogleAI,
             'xai': self.GetxAI,
+            'hermes': self.GetHermes,
             'cohere': self.GetCohere,
             'togetherai': self.GetTogetherAI,
             'nvidia': self.GetNVidia,
@@ -158,6 +159,7 @@ class Agent:
             'mistral': 'Mistral',
             'googleai': 'GoogleAI',
             'xai': 'xAI',
+            'hermes':'Hermes',
             'cohere': 'Cohere',
             'togetherai': 'TogetherAI',
             'nvidia': 'NVidia',
@@ -889,6 +891,38 @@ class Agent:
     @DF.function_trapper(None)
     def GetxAI(self,apikey,messages,model,freqpenalty,temperature,timeout):
         clientAI=openai.OpenAI(api_key=apikey,base_url="https://api.x.ai/v1")
+        try:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+        except Exception as err:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+        clientAI.close()
+
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
+            self.AIError=True
+
+        response=completion.choices[0].message.content.strip()
+        return response,completion
+
+    @DF.function_trapper(None)
+    def GetHermes(self,apikey,messages,model,freqpenalty,temperature,timeout):
+        # Hermes base reference in environment
+        hb=os.getenv('HERMES_BASE')
+        if not hb:
+            raise("HERMES_BASE environment not set")
+
+        clientAI=openai.OpenAI(api_key=apikey,base_url=hb)
         try:
             completion=clientAI.chat.completions.create(
                     model=model,
