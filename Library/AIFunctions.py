@@ -340,6 +340,18 @@ class Agent:
         # Check userhome. This overrides the entire user system,
         # setting the default directory to the program.
 
+        if user is not None and userhome is not None:
+            self.user=user
+            self.userhome=userhome
+            if user not in userhome:
+                self.MemoryLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.{user}.memory"
+                self.TimingLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.{user}.timing"
+            else:
+                self.MemoryLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.memory"
+                self.TimingLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.timing"
+            FF.mkdir(os.path.dirname(self.MemoryLocation))
+            return
+
         if user is None and userhome is not None:
             self.user=user
             self.userhome=userhome
@@ -918,7 +930,7 @@ class Agent:
     @DF.function_trapper(None)
     def GetHermes(self,apikey,messages,model,freqpenalty,temperature,timeout):
         # Hermes base reference in environment
-        hb=os.getenv('HERMES_BASE')
+        hb=os.environ.get('HERMES_BASE')
         if not hb:
             raise("HERMES_BASE environment not set")
 
