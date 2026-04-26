@@ -343,7 +343,7 @@ class Agent:
         if user is not None and userhome is not None:
             self.user=user
             self.userhome=userhome
-            if user not in userhome:
+            if os.path.basename(userhome)!=user:
                 self.MemoryLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.{user}.memory"
                 self.TimingLocation=f"{userhome}/{os.path.basename(CF.RunningName)}.{user}.timing"
             else:
