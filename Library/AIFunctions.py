@@ -707,6 +707,19 @@ class Agent:
             self.Read()
 
         knr=None
+
+        # Search system wide knowledge base
+        sEKB=None
+        if self.UseEKB:
+            sEKB=EKB.ExpertKnowledgeBase()
+
+            knr=sEKB.Search(input)
+            if knr:
+                for blob in knr:
+                    ans="The following is verified expert knowledge that serves as the definitive source for this topic. Treat this information as established fact and use it as the foundation for your response. You may rephrase, restructure, and expand upon this knowledge to provide a clear and helpful answer, but do not introduce information that contradicts or conflicts with what is provided here. If the user's question relates to this topic, base your response entirely on this expert knowledge rather than drawing from general training data. Present your answer with confidence, as this knowledge has been verified by domain experts.\n\n"+blob
+                    self.Put("assistant",ans)
+
+        # Search user EKB
         uEKB=None
         if self.UseEKB:
             uEKB=EKB.ExpertKnowledgeBase(Base=self.MemoryLocation+'.ekb')
@@ -753,23 +766,26 @@ class Agent:
 
             # Response size limitation check
 
-            # This section addresses a specific edge case involving a single
-            # failure mode. Certain models, particularly those hosted on Hugging
-            # Face, have a tendency to perform a “dictionary dump,” defined here as
-            # a condition in which the model outputs a large portion or the
-            # entirety of its accessible internal context, token mappings, or
-            # structured key value data in a single response, rather than
+            # This section addresses a specific edge case involving a
+            # single failure mode. Certain models, particularly those
+            # hosted on Hugging Face, have a tendency to perform a
+            # “dictionary dump,” defined here as a condition in which
+            # the model outputs a large portion or the entirety of its
+            # accessible internal context, token mappings, or structured
+            # key value data in a single response, rather than
             # generating a constrained, task relevant reply.
 
-            # The max response size handling below is designed to mitigate this
-            # behavior. When a model enters this state, the output typically
-            # exceeds defined size limits due to the uncontrolled expansion of
-            # internal data into the response stream. This logic is kept separate
-            # from the standard retry mechanism so that normal retries can be tuned
-            # more conservatively, allowing a functioning model adequate time to
-            # produce a coherent response. This approach is forceful, but it
-            # remains the only method identified so far that provides consistent
-            # and deliberate control over this issue.
+            # The max response size handling below is designed to
+            # mitigate this behavior. When a model enters this state,
+            # the output typically exceeds defined size limits due to
+            # the uncontrolled expansion of internal data into the
+            # response stream. This logic is kept separate from the
+            # standard retry mechanism so that normal retries can be
+            # tuned more conservatively, allowing a functioning model
+            # adequate time to produce a coherent response. This
+            # approach is forceful, but it remains the only method
+            # identified so far that provides consistent and deliberate
+            # control over this issue.
 
             if self.maxrespsize>0 and len(self.response)>self.maxrespsize:
                 time.sleep(self.maxrespretrytimeout)
