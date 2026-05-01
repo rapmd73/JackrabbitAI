@@ -31,7 +31,7 @@ class ContextAwareVersionedMemory:
     def __init__(self,
                  ProfileDecay=0.95,           # decay factor for old versions (optional visual ageing)
                  MinTokensPerMemory=2,
-                 SimilarityThreshold=0.23,    # for chain matching (topic identity)
+                 SimilarityThreshold=0.43,    # for chain matching (topic identity)
                  DormantDays=30,
                  HardDeleteDays=90,
                  ContextCountDefault=23,

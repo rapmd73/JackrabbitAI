@@ -69,6 +69,7 @@ def main():
             return datetime.min.replace(tzinfo=timezone.utc)
 
     items.sort(key=lambda x: get_last(x[1]), reverse=True)
+    tlen=len(items)
     items = items[:args.number]
 
     if not items:
@@ -78,7 +79,7 @@ def main():
     print(f'{"="*60}')
     print(f'  CAVM RECENT {label} CHAINS  (base={args.base})')
     print(f'{"="*60}')
-    print(f'  Total {label.lower()}: {len(items)}')
+    print(f'  Total {label.lower()}: {tlen}')
     print()
 
     for cid, p in items:
