@@ -740,7 +740,7 @@ class Agent:
             for score, cid, ver, tokens in hits[:3]:
                 profile=sCAVM._GetProfile(cid)
                 vData=profile['versions'][ver-1]
-                ans=f"From past conversation with user:\n\n{vData['response']}"
+                ans=f"Our past exchange, version ({ver}):\n\n{vData['response']}\n\n(Update as neccessary)"
                 self.Put("assistant",ans)
 
         # Add users input to the memory

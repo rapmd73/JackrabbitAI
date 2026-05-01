@@ -35,6 +35,7 @@ class ContextAwareVersionedMemory:
                  DormantDays=30,
                  HardDeleteDays=90,
                  ContextCountDefault=23,
+                  MaxVersions=100,
                  Base='/home/JackrabbitAI/Memory/CAVM'):
 
         self.STOP_WORDS = {
@@ -79,6 +80,67 @@ class ContextAwareVersionedMemory:
             'stayed', 'fall', 'falls', 'fell', 'cut', 'cuts', 'reach', 'reaches',
             'reached', 'kill', 'kills', 'killed', 'remain', 'remains', 'remained'
         }
+        self.REDUCE = {
+            'acquire': 'get', 'obtain': 'get', 'procure': 'get', 'attain': 'get',
+            'purchase': 'buy',
+            'commence': 'start', 'begin': 'start', 'initiate': 'start',
+            'terminate': 'end', 'finish': 'end', 'conclude': 'end', 'cease': 'end',
+            'assist': 'help', 'aid': 'help', 'support': 'help',
+            'inform': 'tell', 'notify': 'tell', 'advise': 'tell',
+            'inquire': 'ask', 'question': 'ask',
+            'utilize': 'use', 'employ': 'use',
+            'endeavor': 'try', 'attempt': 'try',
+            'comprehend': 'understand', 'grasp': 'understand',
+            'demonstrate': 'show', 'display': 'show', 'exhibit': 'show',
+            'construct': 'build', 'create': 'build', 'assemble': 'build',
+            'destroy': 'break', 'demolish': 'break', 'ruin': 'break',
+            'remove': 'delete', 'erase': 'delete', 'eliminate': 'delete',
+            'insert': 'add', 'include': 'add', 'append': 'add',
+            'discover': 'find', 'locate': 'find',
+            'examine': 'check', 'inspect': 'check', 'verify': 'check',
+            'select': 'pick', 'choose': 'pick',
+            'require': 'need',
+            'desire': 'want', 'wish': 'want',
+            'repair': 'fix', 'mend': 'fix', 'restore': 'fix',
+            'connect': 'link', 'join': 'link', 'attach': 'link',
+            'disconnect': 'unlink', 'detach': 'unlink',
+            'separate': 'split', 'divide': 'split',
+            'combine': 'merge', 'unite': 'merge',
+            'transfer': 'move', 'relocate': 'move', 'shift': 'move',
+            'remain': 'stay', 'persist': 'stay',
+            'depart': 'leave', 'exit': 'leave',
+            'arrive': 'come', 'reach': 'come',
+            'prior': 'before', 'previous': 'before',
+            'subsequent': 'after', 'following': 'after',
+            'sufficient': 'enough', 'adequate': 'enough',
+            'complete': 'full', 'entire': 'full',
+            'additional': 'more', 'extra': 'more',
+            'numerous': 'many', 'several': 'many',
+            'small': 'little', 'tiny': 'little',
+            'large': 'big', 'huge': 'big', 'enormous': 'big',
+            'rapid': 'fast', 'quick': 'fast', 'swift': 'fast',
+            'difficult': 'hard', 'tough': 'hard',
+            'simple': 'easy', 'effortless': 'easy',
+            'incorrect': 'wrong', 'mistaken': 'wrong',
+            'correct': 'right', 'accurate': 'right',
+            'identical': 'same', 'equal': 'same',
+            'distinct': 'other', 'different': 'other',
+            'essential': 'need', 'necessary': 'need', 'vital': 'need',
+            'superior': 'better', 'improved': 'better',
+            'inferior': 'worse',
+            'maximum': 'most', 'greatest': 'most',
+            'minimum': 'least', 'smallest': 'least',
+            'immediately': 'now', 'instantly': 'now',
+            'previously': 'ago', 'formerly': 'ago',
+            'subsequently': 'later', 'afterward': 'later',
+            'presently': 'now', 'currently': 'now',
+            'occasionally': 'sometimes', 'periodically': 'sometimes',
+            'never': 'not', 'seldom': 'rarely',
+            'always': 'ever', 'forever': 'ever',
+            'perhaps': 'maybe', 'possibly': 'maybe',
+            'certainly': 'yes', 'definitely': 'yes', 'surely': 'yes',
+        }
+        self.UseReduce = True
         
         self.PROFILE_DECAY = ProfileDecay
         self.MIN_TOKENS_PER_MEMORY = MinTokensPerMemory
@@ -86,6 +148,7 @@ class ContextAwareVersionedMemory:
         self.DORMANT_DAYS = DormantDays
         self.HARD_DELETE_DAYS = HardDeleteDays
         self.CONTEXT_COUNT_DEFAULT = ContextCountDefault
+        self.MaxVersions = MaxVersions
         
         self.base = Base if Base is not None else '/home/JackrabbitAI/Memory/CAVM'
         self._profiles = None      # loaded on demand
@@ -98,7 +161,7 @@ class ContextAwareVersionedMemory:
     def _WordTokens(self, text):
         words = []
         for w in str(text).lower().split():
-            w = ''.join(c for c in w if c.isalpha())
+            w = ''.join(c for c in w if c.isalnum())
             if not w or w in self.STOP_WORDS:
                 continue
             if w.endswith('ies') and len(w) > 3:
@@ -107,6 +170,8 @@ class ContextAwareVersionedMemory:
                 w = w[:-3]
             elif w.endswith('s') and len(w) > 1:
                 w = w[:-1]
+            if self.UseReduce and hasattr(self, 'REDUCE') and w in self.REDUCE:
+                w = self.REDUCE[w]
             words.append(w)
         return words
 
@@ -225,6 +290,48 @@ class ContextAwareVersionedMemory:
             for token, count in v['tokens'].items():
                 new_tokens[token] = count * self.PROFILE_DECAY
             v['tokens'] = new_tokens
+
+    def _EnforceVersionCap(self, profile):
+        """If chain exceeds MaxVersions, merge oldest versions into one aggregate."""
+        versions = profile.get('versions', [])
+        if len(versions) <= self.MaxVersions:
+            return
+        # Number of versions to merge: we want final count = MaxVersions
+        # Merge the oldest (len - MaxVersions + 1) versions into one.
+        excess = len(versions) - self.MaxVersions
+        merge_count = excess + 1
+        to_merge = versions[:merge_count]
+        keep = versions[merge_count:]
+        # Aggregate tokens and contexts
+        from collections import Counter
+        agg_tokens = Counter()
+        agg_contexts = set()
+        oldest_ts = None
+        min_v = None
+        for v in to_merge:
+            agg_tokens.update(v.get('tokens', {}))
+            ctx = v.get('contexts', {})
+            if 'default' in ctx:
+                agg_contexts.update(ctx['default'])
+            ts = v.get('last_updated')
+            if ts:
+                if oldest_ts is None or ts < oldest_ts:
+                    oldest_ts = ts
+            vnum = v.get('v')
+            if vnum is not None:
+                if min_v is None or vnum < min_v:
+                    min_v = vnum
+        # Build aggregated version
+        aggregated = {
+            'v': min_v if min_v is not None else 1,
+            'input': '[MERGED]',
+            'response': '[MERGED]',
+            'tokens': agg_tokens,
+            'last_updated': oldest_ts or datetime.now(timezone.utc).isoformat(),
+            'contexts': {'default': sorted(agg_contexts)}
+        }
+        # Replace versions list
+        profile['versions'] = [aggregated] + keep
 
     def _ExpireChains(self, profiles, base):
         base = base or self.base
@@ -390,6 +497,10 @@ class ContextAwareVersionedMemory:
             chain_id_str = best_cid
             new_version = version_index
         
+        # Enforce per-chain version cap
+        profile = profiles[chain_id_str]
+        if len(profile['versions']) > self.MaxVersions:
+            self._EnforceVersionCap(profile)
         self._MarkProfilesDirty()
         self._PersistProfilesIfDirty()
         return chain_id_str, new_version
