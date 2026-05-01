@@ -10,14 +10,18 @@
 
 # Context-Aware Versioned Memory
 
-import json
+import sys
+sys.path.append('/home/GitHub/JackrabbitDLM')
 import os
+import json
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 import hashlib
 
 import CoreFunctions as CF
 import FileFunctions as FF
+
+import DLMLocker as DLM
 
 class ContextAwareVersionedMemory:
     """
@@ -154,6 +158,18 @@ class ContextAwareVersionedMemory:
         FF.mkdir(self.base)
         self.dormant_chains = self.LoadDormant()
 
+    # Decorator for locking in public use functions
+    def LockManager(func):
+        """Decorator: acquire DLM lock on entry, release on exit — handles nested calls."""
+        def wrapper(self, *args, **kwargs):
+            own=DLM.Locker(self.base,ID=self.base,Timeout=10,Retry=7)
+            own.Lock(expire=10)          # DLM recursion count +1 (or TTL reset)
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                own.Unlock()             # DLM recursion count -1 (releases at 0)
+        return wrapper
+
     # ========== Tokenization & helpers ==========
 
     def WordTokens(self, text):
@@ -176,13 +192,11 @@ class ContextAwareVersionedMemory:
     def Tokenize(self, text):
         return Counter(self.WordTokens(text))
 
-    @staticmethod
-    def Hash(text):
+    def Hash(self,text):
         import hashlib
         return hashlib.sha256(str(text).encode('utf-8')).hexdigest()
 
-    @staticmethod
-    def CosineLike(counter_a, counter_b):
+    def CosineLike(self,counter_a, counter_b):
         if not counter_a or not counter_b:
             return 0.0
         intersection = sum(counter_a[k] * counter_b.get(k, 0) for k in counter_a)
@@ -193,21 +207,25 @@ class ContextAwareVersionedMemory:
         return intersection / (norm_a * norm_b)
 
     # ========== Profile persistence ==========
-    
+
+    @LockManager
     def GetProfiles(self):
         if self.profiles is None:
             self.profiles = self.LoadProfiles(self.base)
         return self.profiles
 
+    @LockManager
     def MarkProfilesDirty(self):
         self.dirty = True
 
+    @LockManager
     def PersistProfilesIfDirty(self):
         if self.dirty:
             self.SaveProfiles(self.base, self.profiles)
             self.dormant_chains = self.LoadDormant(self.base)
             self.dirty = False
 
+    @LockManager
     def LoadProfiles(self, base):
         path = os.path.join(base, 'chain_profiles.db')
         profiles = {}
@@ -236,6 +254,7 @@ class ContextAwareVersionedMemory:
             pass
         return profiles
 
+    @LockManager
     def SaveProfiles(self, base, profiles):
         path = os.path.join(base, 'chain_profiles.db')
         lines = []
@@ -251,6 +270,7 @@ class ContextAwareVersionedMemory:
             lines.append(json.dumps(obj, ensure_ascii=False))
         FF.WriteFile(path, '\n'.join(lines) + '\n')
 
+    @LockManager
     def LoadDormant(self, base=None):
         base = base or self.base
         path = os.path.join(base, 'dormant.db')
@@ -268,6 +288,7 @@ class ContextAwareVersionedMemory:
             pass
         return chains
 
+    @LockManager
     def SaveDormant(self, base=None):
         base = base or self.base
         path = os.path.join(base, 'dormant.db')
@@ -277,7 +298,8 @@ class ContextAwareVersionedMemory:
         FF.WriteFile(path, '\n'.join(lines) + '\n')
 
     # ========== Decay & Expiry ==========
-    
+
+    @LockManager
     def DecayVersions(self, versions):
         """Apply decay multiplier to token counts in all versions except the most recent."""
         if not versions:
@@ -289,6 +311,7 @@ class ContextAwareVersionedMemory:
                 new_tokens[token] = count * self.PROFILE_DECAY
             v['tokens'] = new_tokens
 
+    @LockManager
     def ExpireChains(self, profiles, base):
         base = base or self.base
         now = datetime.now(timezone.utc)
@@ -326,12 +349,14 @@ class ContextAwareVersionedMemory:
 
     # ========== Chain operations ==========
 
+    @LockManager
     def GetChainCount(self):
         profiles = self.GetProfiles()
         self.dormant_chains = self.LoadDormant(self.base)
         active = [cid for cid in profiles if cid not in self.dormant_chains]
         return len(active)
 
+    @LockManager
     def GetChainLabels(self):
         profiles = self.GetProfiles()
         labels = {}
@@ -346,10 +371,12 @@ class ContextAwareVersionedMemory:
                 labels[cid] = '(no versions)'
         return labels
 
+    @LockManager
     def GetProfile(self, chain_id):
         profiles = self.GetProfiles()
         return profiles.get(str(chain_id))
 
+    @LockManager
     def GetVersion(self, chain_id, version=None):
         """Get a specific version of a chain. version=None => latest."""
         profile = self.GetProfile(chain_id)
@@ -370,6 +397,7 @@ class ContextAwareVersionedMemory:
             return versions[version - 1]
         return None
 
+    @LockManager
     def Reset(self):
         base = self.base
         for fn in ['chain_profiles.db', 'dormant.db']:   # only these two exist now
@@ -383,6 +411,7 @@ class ContextAwareVersionedMemory:
 
     # ========== Core API ==========
 
+    @LockManager
     def Update(self, content=None, input=None, response=None, contexts=None):
         """
         Create a new version within a chain.
@@ -396,15 +425,15 @@ class ContextAwareVersionedMemory:
         if input is not None: parts.append(str(input))
         if response is not None: parts.append(str(response))
         combined = '\n'.join(parts)
-        
+
         token_ctr = self.Tokenize(combined)
         if sum(token_ctr.values()) < self.MIN_TOKENS_PER_MEMORY:
             return None, 0
-        
+
         profiles = self.GetProfiles()
         self.dormant_chains = self.LoadDormant(self.base)
         self.ExpireChains(profiles, self.base)
-        
+
         # Find best-matching active chain by scoring against its LATEST version
         scores = {}
         for cid, p in profiles.items():
@@ -417,9 +446,9 @@ class ContextAwareVersionedMemory:
             score = self.CosineLike(token_ctr, latest['tokens'])
             if score > 0:
                 scores[cid] = score
-        
+
         best_cid, best_score = (max(scores.items(), key=lambda x: x[1]) if scores else (None, 0.0))
-        
+
         now_iso = datetime.now(timezone.utc).isoformat()
         version = {
             'input': input,
@@ -430,7 +459,7 @@ class ContextAwareVersionedMemory:
                 'default': self.TopTokens(token_ctr, self.CONTEXT_COUNT_DEFAULT)
             }
         }
-        
+
         if best_cid is None or best_score < self.SIMILARITY_THRESHOLD:
             # New chain — version 1
             chain_id_str = self.Hash(combined)
@@ -452,13 +481,14 @@ class ContextAwareVersionedMemory:
             profile['last_updated'] = now_iso
             chain_id_str = best_cid
             new_version = version_index
-        
+
         # Enforce per-chain version cap
         profile = profiles[chain_id_str]
         self.MarkProfilesDirty()
         self.PersistProfilesIfDirty()
         return chain_id_str, new_version
 
+    @LockManager
     def Search(self, query, limit=3, version=None):
         """
         Search for chains relevant to the query.
@@ -511,6 +541,7 @@ class ContextAwareVersionedMemory:
         return [tok for tok, _ in most]
 
     # Convenience: human-readable history
+    @LockManager
     def GetHistory(self, chain_id):
         """Return list of version summaries for the chain."""
         profile = self.GetProfile(chain_id)
