@@ -31,11 +31,10 @@ class ContextAwareVersionedMemory:
     def __init__(self,
                  ProfileDecay=0.95,           # decay factor for old versions (optional visual ageing)
                  MinTokensPerMemory=2,
-                 SimilarityThreshold=0.30,    # for chain matching (topic identity)
+                 SimilarityThreshold=0.23,    # for chain matching (topic identity)
                  DormantDays=30,
                  HardDeleteDays=90,
                  ContextCountDefault=23,
-                  MaxVersions=100,
                  Base='/home/JackrabbitAI/Memory/CAVM'):
 
         self.STOP_WORDS = {
@@ -141,24 +140,23 @@ class ContextAwareVersionedMemory:
             'certainly': 'yes', 'definitely': 'yes', 'surely': 'yes',
         }
         self.UseReduce = True
-        
+
         self.PROFILE_DECAY = ProfileDecay
         self.MIN_TOKENS_PER_MEMORY = MinTokensPerMemory
         self.SIMILARITY_THRESHOLD = SimilarityThreshold
         self.DORMANT_DAYS = DormantDays
         self.HARD_DELETE_DAYS = HardDeleteDays
         self.CONTEXT_COUNT_DEFAULT = ContextCountDefault
-        self.MaxVersions = MaxVersions
-        
+
         self.base = Base if Base is not None else '/home/JackrabbitAI/Memory/CAVM'
-        self._profiles = None      # loaded on demand
-        self._dirty = False
+        self.profiles = None      # loaded on demand
+        self.dirty = False
         FF.mkdir(self.base)
-        self._dormant_chains = self._LoadDormant()
+        self.dormant_chains = self.LoadDormant()
 
     # ========== Tokenization & helpers ==========
-    
-    def _WordTokens(self, text):
+
+    def WordTokens(self, text):
         words = []
         for w in str(text).lower().split():
             w = ''.join(c for c in w if c.isalnum())
@@ -175,16 +173,16 @@ class ContextAwareVersionedMemory:
             words.append(w)
         return words
 
-    def _Tokenize(self, text):
-        return Counter(self._WordTokens(text))
+    def Tokenize(self, text):
+        return Counter(self.WordTokens(text))
 
     @staticmethod
-    def _Hash(text):
+    def Hash(text):
         import hashlib
         return hashlib.sha256(str(text).encode('utf-8')).hexdigest()
 
     @staticmethod
-    def _CosineLike(counter_a, counter_b):
+    def CosineLike(counter_a, counter_b):
         if not counter_a or not counter_b:
             return 0.0
         intersection = sum(counter_a[k] * counter_b.get(k, 0) for k in counter_a)
@@ -196,21 +194,21 @@ class ContextAwareVersionedMemory:
 
     # ========== Profile persistence ==========
     
-    def _GetProfiles(self):
-        if self._profiles is None:
-            self._profiles = self._LoadProfiles(self.base)
-        return self._profiles
+    def GetProfiles(self):
+        if self.profiles is None:
+            self.profiles = self.LoadProfiles(self.base)
+        return self.profiles
 
-    def _MarkProfilesDirty(self):
-        self._dirty = True
+    def MarkProfilesDirty(self):
+        self.dirty = True
 
-    def _PersistProfilesIfDirty(self):
-        if self._dirty:
-            self._SaveProfiles(self.base, self._profiles)
-            self._dormant_chains = self._LoadDormant(self.base)
-            self._dirty = False
+    def PersistProfilesIfDirty(self):
+        if self.dirty:
+            self.SaveProfiles(self.base, self.profiles)
+            self.dormant_chains = self.LoadDormant(self.base)
+            self.dirty = False
 
-    def _LoadProfiles(self, base):
+    def LoadProfiles(self, base):
         path = os.path.join(base, 'chain_profiles.db')
         profiles = {}
         if not os.path.exists(path):
@@ -238,7 +236,7 @@ class ContextAwareVersionedMemory:
             pass
         return profiles
 
-    def _SaveProfiles(self, base, profiles):
+    def SaveProfiles(self, base, profiles):
         path = os.path.join(base, 'chain_profiles.db')
         lines = []
         for profile in profiles.values():
@@ -253,7 +251,7 @@ class ContextAwareVersionedMemory:
             lines.append(json.dumps(obj, ensure_ascii=False))
         FF.WriteFile(path, '\n'.join(lines) + '\n')
 
-    def _LoadDormant(self, base=None):
+    def LoadDormant(self, base=None):
         base = base or self.base
         path = os.path.join(base, 'dormant.db')
         if not os.path.exists(path):
@@ -270,17 +268,17 @@ class ContextAwareVersionedMemory:
             pass
         return chains
 
-    def _SaveDormant(self, base=None):
+    def SaveDormant(self, base=None):
         base = base or self.base
         path = os.path.join(base, 'dormant.db')
         lines = []
-        for cid in sorted(self._dormant_chains):
+        for cid in sorted(self.dormant_chains):
             lines.append(f"{cid}")
         FF.WriteFile(path, '\n'.join(lines) + '\n')
 
     # ========== Decay & Expiry ==========
     
-    def _DecayVersions(self, versions):
+    def DecayVersions(self, versions):
         """Apply decay multiplier to token counts in all versions except the most recent."""
         if not versions:
             return
@@ -291,49 +289,7 @@ class ContextAwareVersionedMemory:
                 new_tokens[token] = count * self.PROFILE_DECAY
             v['tokens'] = new_tokens
 
-    def _EnforceVersionCap(self, profile):
-        """If chain exceeds MaxVersions, merge oldest versions into one aggregate."""
-        versions = profile.get('versions', [])
-        if len(versions) <= self.MaxVersions:
-            return
-        # Number of versions to merge: we want final count = MaxVersions
-        # Merge the oldest (len - MaxVersions + 1) versions into one.
-        excess = len(versions) - self.MaxVersions
-        merge_count = excess + 1
-        to_merge = versions[:merge_count]
-        keep = versions[merge_count:]
-        # Aggregate tokens and contexts
-        from collections import Counter
-        agg_tokens = Counter()
-        agg_contexts = set()
-        oldest_ts = None
-        min_v = None
-        for v in to_merge:
-            agg_tokens.update(v.get('tokens', {}))
-            ctx = v.get('contexts', {})
-            if 'default' in ctx:
-                agg_contexts.update(ctx['default'])
-            ts = v.get('last_updated')
-            if ts:
-                if oldest_ts is None or ts < oldest_ts:
-                    oldest_ts = ts
-            vnum = v.get('v')
-            if vnum is not None:
-                if min_v is None or vnum < min_v:
-                    min_v = vnum
-        # Build aggregated version
-        aggregated = {
-            'v': min_v if min_v is not None else 1,
-            'input': '[MERGED]',
-            'response': '[MERGED]',
-            'tokens': agg_tokens,
-            'last_updated': oldest_ts or datetime.now(timezone.utc).isoformat(),
-            'contexts': {'default': sorted(agg_contexts)}
-        }
-        # Replace versions list
-        profile['versions'] = [aggregated] + keep
-
-    def _ExpireChains(self, profiles, base):
+    def ExpireChains(self, profiles, base):
         base = base or self.base
         now = datetime.now(timezone.utc)
         cutoff_hard = now - timedelta(days=self.HARD_DELETE_DAYS)
@@ -370,33 +326,33 @@ class ContextAwareVersionedMemory:
 
     # ========== Chain operations ==========
 
-    def _GetChainCount(self):
-        profiles = self._GetProfiles()
-        self._dormant_chains = self._LoadDormant(self.base)
-        active = [cid for cid in profiles if cid not in self._dormant_chains]
+    def GetChainCount(self):
+        profiles = self.GetProfiles()
+        self.dormant_chains = self.LoadDormant(self.base)
+        active = [cid for cid in profiles if cid not in self.dormant_chains]
         return len(active)
 
-    def _GetChainLabels(self):
-        profiles = self._GetProfiles()
+    def GetChainLabels(self):
+        profiles = self.GetProfiles()
         labels = {}
         for cid, p in profiles.items():
             versions = p.get('versions', [])
             if versions:
                 latest = versions[-1]
                 tokens = latest.get('tokens', {})
-                top = self._TopTokens(tokens, self.CONTEXT_COUNT_DEFAULT)
+                top = self.TopTokens(tokens, self.CONTEXT_COUNT_DEFAULT)
                 labels[cid] = ' '.join(top) if top else '(empty)'
             else:
                 labels[cid] = '(no versions)'
         return labels
 
-    def _GetProfile(self, chain_id):
-        profiles = self._GetProfiles()
+    def GetProfile(self, chain_id):
+        profiles = self.GetProfiles()
         return profiles.get(str(chain_id))
 
-    def _GetVersion(self, chain_id, version=None):
+    def GetVersion(self, chain_id, version=None):
         """Get a specific version of a chain. version=None => latest."""
-        profile = self._GetProfile(chain_id)
+        profile = self.GetProfile(chain_id)
         if not profile:
             return None
         versions = profile.get('versions', [])
@@ -414,16 +370,16 @@ class ContextAwareVersionedMemory:
             return versions[version - 1]
         return None
 
-    def _Reset(self):
+    def Reset(self):
         base = self.base
         for fn in ['chain_profiles.db', 'dormant.db']:   # only these two exist now
             try:
                 os.remove(os.path.join(base, fn))
             except Exception:
                 pass
-        self._profiles = {}
-        self._dormant_chains = set()
-        self._dirty = False
+        self.profiles = {}
+        self.dormant_chains = set()
+        self.dirty = False
 
     # ========== Core API ==========
 
@@ -441,24 +397,24 @@ class ContextAwareVersionedMemory:
         if response is not None: parts.append(str(response))
         combined = '\n'.join(parts)
         
-        token_ctr = self._Tokenize(combined)
+        token_ctr = self.Tokenize(combined)
         if sum(token_ctr.values()) < self.MIN_TOKENS_PER_MEMORY:
             return None, 0
         
-        profiles = self._GetProfiles()
-        self._dormant_chains = self._LoadDormant(self.base)
-        self._ExpireChains(profiles, self.base)
+        profiles = self.GetProfiles()
+        self.dormant_chains = self.LoadDormant(self.base)
+        self.ExpireChains(profiles, self.base)
         
         # Find best-matching active chain by scoring against its LATEST version
         scores = {}
         for cid, p in profiles.items():
-            if cid in self._dormant_chains:
+            if cid in self.dormant_chains:
                 continue
             versions = p.get('versions', [])
             if not versions:
                 continue
             latest = versions[-1]
-            score = self._CosineLike(token_ctr, latest['tokens'])
+            score = self.CosineLike(token_ctr, latest['tokens'])
             if score > 0:
                 scores[cid] = score
         
@@ -471,13 +427,13 @@ class ContextAwareVersionedMemory:
             'tokens': token_ctr,
             'last_updated': now_iso,
             'contexts': contexts if contexts is not None else {
-                'default': self._TopTokens(token_ctr, self.CONTEXT_COUNT_DEFAULT)
+                'default': self.TopTokens(token_ctr, self.CONTEXT_COUNT_DEFAULT)
             }
         }
         
         if best_cid is None or best_score < self.SIMILARITY_THRESHOLD:
             # New chain — version 1
-            chain_id_str = self._Hash(combined)
+            chain_id_str = self.Hash(combined)
             version['v'] = 1
             profiles[chain_id_str] = {
                 'chain_id': chain_id_str,
@@ -489,7 +445,7 @@ class ContextAwareVersionedMemory:
             # Append to existing chain
             profile = profiles[best_cid]
             # Decay older versions before adding fresh one
-            self._DecayVersions(profile['versions'])
+            self.DecayVersions(profile['versions'])
             version_index = len(profile['versions']) + 1
             version['v'] = version_index
             profile['versions'].append(version)
@@ -499,10 +455,8 @@ class ContextAwareVersionedMemory:
         
         # Enforce per-chain version cap
         profile = profiles[chain_id_str]
-        if len(profile['versions']) > self.MaxVersions:
-            self._EnforceVersionCap(profile)
-        self._MarkProfilesDirty()
-        self._PersistProfilesIfDirty()
+        self.MarkProfilesDirty()
+        self.PersistProfilesIfDirty()
         return chain_id_str, new_version
 
     def Search(self, query, limit=3, version=None):
@@ -511,13 +465,13 @@ class ContextAwareVersionedMemory:
         By default, scores against the latest version of each active chain.
         Returns list of (score, chain_id, version_index, top_tokens) tuples, sorted descending.
         """
-        query_ctr = self._Tokenize(query)
+        query_ctr = self.Tokenize(query)
         if not query_ctr:
             return []
-        profiles = self._GetProfiles()
+        profiles = self.GetProfiles()
         if not profiles:
             return []
-        dormant = self._LoadDormant(self.base)
+        dormant = self.LoadDormant(self.base)
         scores = []
         for cid, prof in profiles.items():
             if cid in dormant:
@@ -541,14 +495,14 @@ class ContextAwareVersionedMemory:
                 v_idx = version
             else:
                 continue
-            score = self._CosineLike(query_ctr, vdata['tokens'])
+            score = self.CosineLike(query_ctr, vdata['tokens'])
             if score > 0:
-                top = self._TopTokens(vdata['tokens'], self.CONTEXT_COUNT_DEFAULT)
+                top = self.TopTokens(vdata['tokens'], self.CONTEXT_COUNT_DEFAULT)
                 scores.append((score, cid, v_idx, top))
         scores.sort(key=lambda x: x[0], reverse=True)
         return scores[:limit]
 
-    def _TopTokens(self, counter, n=None):
+    def TopTokens(self, counter, n=None):
         if n is None:
             n = self.CONTEXT_COUNT_DEFAULT
         if n <= 0:
@@ -559,7 +513,7 @@ class ContextAwareVersionedMemory:
     # Convenience: human-readable history
     def GetHistory(self, chain_id):
         """Return list of version summaries for the chain."""
-        profile = self._GetProfile(chain_id)
+        profile = self.GetProfile(chain_id)
         if not profile:
             return []
         history = []
@@ -570,6 +524,6 @@ class ContextAwareVersionedMemory:
                 'response_snippet': (v.get('response','')[:60] + '...') if v.get('response') else '',
                 'timestamp': v.get('last_updated'),
                 'token_count': sum(v['tokens'].values()),
-                'top_tokens': self._TopTokens(v['tokens'], 10)
+                'top_tokens': self.TopTokens(v['tokens'], 10)
             })
         return history

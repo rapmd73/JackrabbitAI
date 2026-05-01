@@ -738,7 +738,7 @@ class Agent:
             sCAVM=CAVM.ContextAwareVersionedMemory()
             hits=sCAVM.Search(input)
             for score, cid, ver, tokens in hits[:3]:
-                profile=sCAVM._GetProfile(cid)
+                profile=sCAVM.GetProfile(cid)
                 vData=profile['versions'][ver-1]
                 ans=f"Our past exchange, version ({ver}):\n\n{vData['response']}\n\n(Update as neccessary)"
                 self.Put("assistant",ans)

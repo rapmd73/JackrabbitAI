@@ -52,8 +52,8 @@ def main():
     args = parse_args()
 
     cavm = CAVM.ContextAwareVersionedMemory(Base=args.base)
-    profiles = cavm._GetProfiles()
-    dormant = cavm._LoadDormant(args.base) if not args.dormant else None
+    profiles = cavm.GetProfiles()
+    dormant = cavm.LoadDormant(args.base) if not args.dormant else None
 
     if args.dormant:
         items = [(cid, p) for cid, p in profiles.items() if cid in dormant]
@@ -89,7 +89,7 @@ def main():
         age = age_human(last_dt) if last_dt else 'unknown'
 
         latest = versions[-1] if versions else {}
-        top_tokens = cavm._TopTokens(latest.get('tokens', {}), 10)
+        top_tokens = cavm.TopTokens(latest.get('tokens', {}), 10)
         top_str = ' '.join(top_tokens) if top_tokens else '(empty)'
 
         snippet = ''
@@ -111,7 +111,7 @@ def main():
             for v in reversed(versions[-5:]):
                 vn   = v.get('v', '?')
                 vt   = iso_to_local(v.get('last_updated', ''))
-                vtok = cavm._TopTokens(v.get('tokens', {}), 5)
+                vtok = cavm.TopTokens(v.get('tokens', {}), 5)
                 inp  = (v.get('input','') or '')[:60]
                 print(f'      v{vn}: {vt}  tokens: {" ".join(vtok)}')
                 if inp:
