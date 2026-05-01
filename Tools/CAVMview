@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""CAVM v14 — View recently updated memory chains.
+Shows the most recently touched chains (by last_updated), with version counts
+and the latest version's top tokens and response snippet.
+"""
+
+import sys
+import os
+import json
+import argparse
+from datetime import datetime, timezone
+
+sys.path.insert(0, '/home/JackrabbitAI/Library')
+import CAVMFunctions as CAVM
+
+def parse_args():
+    p = argparse.ArgumentParser(description='View recently updated CAVM chains')
+    p.add_argument('-n', '--number', type=int, default=10,
+                   help='Number of recent chains to show (default: 10)')
+    p.add_argument('-b', '--base', default='/home/JackrabbitAI/Memory/CAVM',
+                   help='CAVM base directory')
+    p.add_argument('-v', '--versions', action='store_true',
+                   help='Show recent version history for each chain')
+    p.add_argument('-s', '--show-snippet', action='store_true',
+                   help='Include response snippet (truncated)')
+    p.add_argument('--dormant', action='store_true',
+                   help='Show dormant chains instead of active ones')
+    return p.parse_args()
+
+def iso_to_local(iso_str):
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return iso_str
+
+def age_human(dt):
+    now = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    delta = now - dt
+    sec = delta.total_seconds()
+    if sec < 60:    return f'{int(sec)}s ago'
+    if sec < 3600:  return f'{int(sec/60)}m ago'
+    if sec < 86400: return f'{int(sec/3600)}h ago'
+    if sec < 2592000: return f'{int(sec/86400)}d ago'
+    return f'{int(sec/2592000)}mo ago'
+
+def main():
+    args = parse_args()
+
+    cavm = CAVM.ContextAwareVersionedMemory(Base=args.base)
+    profiles = cavm._GetProfiles()
+    dormant = cavm._LoadDormant(args.base) if not args.dormant else None
+
+    if args.dormant:
+        items = [(cid, p) for cid, p in profiles.items() if cid in dormant]
+        label = 'DORMANT'
+    else:
+        items = [(cid, p) for cid, p in profiles.items() if cid not in dormant]
+        label = 'ACTIVE'
+
+    def get_last(p):
+        try:
+            return datetime.fromisoformat(p.get('last_updated', ''))
+        except Exception:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    items.sort(key=lambda x: get_last(x[1]), reverse=True)
+    items = items[:args.number]
+
+    if not items:
+        print(f'No {label.lower()} chains found.')
+        return
+
+    print(f'{"="*60}')
+    print(f'  CAVM RECENT {label} CHAINS  (base={args.base})')
+    print(f'{"="*60}')
+    print(f'  Total {label.lower()}: {len(items)}')
+    print()
+
+    for cid, p in items:
+        versions = p.get('versions', [])
+        vcount = len(versions)
+        last_str = p.get('last_updated', '')
+        last_dt = datetime.fromisoformat(last_str) if last_str else None
+        age = age_human(last_dt) if last_dt else 'unknown'
+
+        latest = versions[-1] if versions else {}
+        top_tokens = cavm._TopTokens(latest.get('tokens', {}), 10)
+        top_str = ' '.join(top_tokens) if top_tokens else '(empty)'
+
+        snippet = ''
+        if args.show_snippet and latest.get('response'):
+            resp = latest['response']
+            snippet = resp[:120] + ('...' if len(resp) > 120 else '')
+
+        print(f'  Chain  : {cid[:24]}...')
+        print(f'  Verts  : {vcount}   Updated: {iso_to_local(last_str)} ({age})')
+        print(f'  Tokens : {top_str}')
+        if snippet:
+            # Show snippet on multiple lines if long
+            for line in snippet.split('\n')[:2]:
+                print(f'  Latest : {line[:100]}')
+        print()
+
+        if args.versions:
+            print(f'    Recent versions (up to 5):')
+            for v in reversed(versions[-5:]):
+                vn   = v.get('v', '?')
+                vt   = iso_to_local(v.get('last_updated', ''))
+                vtok = cavm._TopTokens(v.get('tokens', {}), 5)
+                inp  = (v.get('input','') or '')[:60]
+                print(f'      v{vn}: {vt}  tokens: {" ".join(vtok)}')
+                if inp:
+                    print(f'           input: {inp!r}')
+            if vcount > 5:
+                print(f'      ... (+{vcount - 5} older)')
+            print()
+
+if __name__ == '__main__':
+    main()

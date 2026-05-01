@@ -6,6 +6,7 @@
 # All rights reserved unconditionally.
 
 import sys
+sys.path.append('/home/JackrabbitAI/Library')
 import os
 import signal
 import psutil

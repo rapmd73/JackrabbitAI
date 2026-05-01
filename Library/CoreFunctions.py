@@ -55,6 +55,7 @@
 # whether a program should wait for user input or proceed with other tasks.
 
 import sys
+sys.path.append('/home/JackrabbitAI/Library')
 import os
 import io
 import copy

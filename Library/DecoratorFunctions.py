@@ -46,6 +46,7 @@
 # and handle the error, respectively.
 
 import sys
+sys.path.append('/home/JackrabbitAI/Library')
 import functools
 import inspect
 import traceback

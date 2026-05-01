@@ -54,6 +54,7 @@
 # threading to be considered stable.
 
 import sys
+sys.path.append('/home/JackrabbitAI/Library')
 import os
 os.environ["TOGETHER_NO_BANNER"]="1"
 import pwd
@@ -86,6 +87,7 @@ import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
 import EKBFunctions as EKB
+import CAVMFunctions as CAVM
 
 # Verify that JackrabbitDLM is loaded and running.
 JRDLM=False
@@ -126,7 +128,7 @@ class Agent:
 
     # RateLimit is 2 seconds
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=True,RateLimitWait=2000,UseEKB=True):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=True,RateLimitWait=2000,UseEKB=True,UseCAVM=True):
         self.PersonaConfig="/home/JackrabbitAI/Personas"
 
         self.SystemRoleDefault= \
@@ -170,6 +172,7 @@ class Agent:
             'huggingface': 'HuggingFace' }
 
         self.UseEKB=UseEKB          # Using the EKB
+        self.UseCAVM=UseCAVM        # Using CAVM
         self.AIError=False          # Error in the AI engine, breaks retry
         self.user=None              # User name
         self.userhome=None          # User home directory
@@ -730,6 +733,16 @@ class Agent:
                     ans="The following is verified expert knowledge that serves as the definitive source for this topic. Treat this information as established fact and use it as the foundation for your response. You may rephrase, restructure, and expand upon this knowledge to provide a clear and helpful answer, but do not introduce information that contradicts or conflicts with what is provided here. If the user's question relates to this topic, base your response entirely on this expert knowledge rather than drawing from general training data. Present your answer with confidence, as this knowledge has been verified by domain experts.\n\n"+blob
                     self.Put("assistant",ans)
 
+        # Search system CAVM
+        if self.UseCAVM:
+            sCAVM=CAVM.ContextAwareVersionedMemory()
+            hits=sCAVM.Search(input)
+            for score, cid, ver, tokens in hits[:3]:
+                profile=sCAVM._GetProfile(cid)
+                vData=profile['versions'][ver-1]
+                ans=f"From past conversation with user:\n\n{vData['response']}"
+                self.Put("assistant",ans)
+
         # Add users input to the memory
         self.Put("user",input)
 
@@ -738,6 +751,10 @@ class Agent:
         wm,ct=self.MaintainTokenLimit()
         if wm==None: # Will be None if over token limit
             self.response=None
+            # Unock the model
+
+            if self.ModelLock:
+                self.ModelLock.Unlock()
             return None
 
         # Send AI service the messages
@@ -815,6 +832,11 @@ class Agent:
             # Save to disk
             if self.save and not self.isolation:
                 self.Write()
+
+            # Update CAVM
+            if self.UseCAVM:
+                sCAVM=CAVM.ContextAwareVersionedMemory()
+                cid,ver=sCAVM.Update(input,self.response)
 
         # Unock the model
 

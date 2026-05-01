@@ -61,7 +61,7 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class ExpertKnowledgeBase:
-    def __init__(self, Base=None):
+    def __init__(self, Base='/home/JackrabbitAI/Memory/EKB'):
         # Stop words (no search value)
         self.STOP = {'a','an','the','is','are','was','were','be','been','being',
                 'have','has','had','do','does','did','will','would','shall',
@@ -170,7 +170,7 @@ class ExpertKnowledgeBase:
 
         # Configuration
         self.LANG = 'english'
-        self.BASE=Base if Base is not None else '/home/JackrabbitAI/ExpertKnowledgeBase'
+        self.BASE=Base if Base is not None else '/home/JackrabbitAI/Memory/EKB'
         FF.mkdir(self.BASE)
 
     def SetLocation(self, path):
