@@ -740,7 +740,10 @@ class Agent:
             for score, cid, ver, tokens in hits[:3]:
                 profile=sCAVM.GetProfile(cid)
                 vData=profile['versions'][ver-1]
-                ans=f"Our past exchange, version ({ver}):\n\n{vData['response']}\n\n(Update as neccessary)"
+                if vData['response']:
+                    ans=f"Our past exchange, version ({ver}):\n\n{vData['response']}\n\n(Update as neccessary)"
+                else:
+                    ans=f"Our past exchange, version ({ver}):\n\n{vData['input']}\n\n(Update as neccessary)"
                 self.Put("assistant",ans)
 
         # Add users input to the memory
@@ -836,7 +839,7 @@ class Agent:
             # Update CAVM
             if self.UseCAVM:
                 sCAVM=CAVM.ContextAwareVersionedMemory()
-                cid,ver=sCAVM.Update(input,self.response)
+                cid,ver=sCAVM.Update(input=input,response=self.response)
 
         # Unock the model
 
