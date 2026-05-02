@@ -160,7 +160,6 @@ class ContextAwareVersionedMemory:
 
     # Decorator for locking in public use functions
     def LockManager(func):
-        """Decorator: acquire DLM lock on entry, release on exit — handles nested calls."""
         def wrapper(self, *args, **kwargs):
             own=DLM.Locker(self.base,ID=self.base,Timeout=10,Retry=7)
             own.Lock(expire=10)          # DLM recursion count +1 (or TTL reset)
