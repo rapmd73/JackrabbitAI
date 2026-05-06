@@ -492,7 +492,7 @@ class Agent:
     # placeholders in the response buffer (`buff`) are replaced with the new
     # score, ensuring dynamic emotional feedback.
 
-    def CalculateEmotionalScore(self,instr,input):
+    def CalculateEmotionalScore(self,SystemRole,input):
         # Don't waste cycles if theres no defined classifier instruction file
         if self.EScoreInstruction is not None and not os.path.exists(self.EScoreInstruction):
             return instr,0
@@ -509,17 +509,17 @@ class Agent:
         mscore=0    # Nuetral
 
         # Running the classifier
-        resp=self.AIClassifier(instr,input,FailResp="0",lval=lval,rval=rval,nsfw=self.allowNSFW)
+        resp=self.AIClassifier(self.EScoreInstruction,input,FailResp="0",lval=lval,rval=rval,nsfw=self.allowNSFW)
         if resp:
             try:
                 mscore=float(resp)
                 escore+=mscore
                 FF.WriteFile(self.EScoreFile,f"{escore:.2f}\n")
-                if '{ESNEUTRAL}' in instr:
-                    instr=buff.replace('{ESNEUTRAL}',f'{escore:.2f}')
+                if '{ESNEUTRAL}' in SystemRole:
+                    SystemRole=buff.replace('{ESNEUTRAL}',f'{escore:.2f}')
             except:
-                return instr,escore
-        return instr,escore
+                return SystemRole,escore
+        return SystemRole,escore
 
     # The `Read` function is designed to read data from a memory file located
     # at `self.MemoryLocation`, if it exists. It reads the file line by line,
@@ -967,11 +967,10 @@ class Agent:
             return FailResp
 
         # Lock the model
-
         if self.ModelLock:
             self.ModelLock.Lock()
 
-        instr=ReadFile(classifier).replace('\n',' ').strip()
+        instr=FF.ReadFile(classifier).replace('\n',' ').strip()
         if lval:
             instr=instr.replace('{lval}',f'{lval}')
         if rval:
@@ -1039,7 +1038,7 @@ class Agent:
             self.ModelLock.Unlock()
 
         # Return failed response
-        if self.response is not None:
+        if self.response is None:
             return FailResp
 
         # response can be None
