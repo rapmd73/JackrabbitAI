@@ -178,6 +178,8 @@ class Agent:
         self.userhome=None          # User home directory
         self.MemoryLocation=None    # Memory files location
         self.TimingLocation=None    # Timing file location
+        self.EScoreInstruction=None # Emotional Score instructions
+        self.EScoreFile=None        # Emotional Score data file
         self.usertokens=usertokens  # explicit path to tokens. OVERIDE user area
         self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
         self.engine=engine.lower()  # AI engine for a memory item (token count)
@@ -208,6 +210,7 @@ class Agent:
         self.RateLimitWait=RateLimitWait
         self.Limiter=None
         self.ModelLock=None         # None by default for condirional testing
+        self.discordGID=None        # Discord server ID
         self.discordChannel=None    # No discord channel
         self.allowNSFW=False        # nsfw roles are NOT allowed
         self.Memory=[]
@@ -266,7 +269,8 @@ class Agent:
 
     # Set discord channel and NSFW allowance
 
-    def Discord(channel,nssw):
+    def Discord(self,gid,channel,nsfw):
+        self.discordGID=gid
         self.discordChannel=channel
         self.allowNSFW=nsfw
 
@@ -319,13 +323,31 @@ class Agent:
     # Set the memory and timing locations separately
 
     def SetMemory(self,memory=None,timing=None):
+        # Set memory database
         if memory is not None:
-            self.MemoryLocation=f"{memory}/{os.path.basename(CF.RunningName)}.memory"
+            self.MemoryLocation=memory
+        else:
+            self.MemoryLocation=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.memory"
+        # Set timing file
         if timing is not None:
             self.TimingLocation=timing
         else:
-            self.TimingLocation=f"{memory}/{os.path.basename(CF.RunningName)}.timing"
+            self.TimingLocation=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.timing"
+        # Make memory location
         FF.mkdir(os.path.dirname(self.MemoryLocation))
+
+    # Set the Emotional Score to its proper location AND name
+    def SetEmotionalScore(self,instr=None,escore=None):
+        # Set emotional score instructions
+        if instr is not None:
+            self.EScoreInstruction=instr
+        else:
+            self.EScoreInstruction=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.EmotionInstructions"
+        # Set emotional score file
+        if escore is not None:
+            self.EScoreFile=escore
+        else:
+            self.EScoreFile=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.escore"
 
     # The `SetStorage` function is a method that sets the storage locations for
     # memory and timing files within an object. It takes two optional
@@ -422,6 +444,83 @@ class Agent:
     def UpdateLast(self,role,data):
         self.Memory[-1][role]=data
 
+    # Emotional Score functions
+
+    # The `CalculateMinorScale` function translates an emotional score,
+    # referred to as the "MajorScale," into a refined range of minor emotional
+    # variations, represented by `MinorMax` and `MinorMin`. The MajorScale,
+    # constrained between -10 and 10, determines the sensitivity of these
+    # minor emotional shifts. Positive scores reduce the upper range of
+    # variability, while negative scores lessen the lower range, and a neutral
+    # score provides a balanced range. This ensures that emotional intensity
+    # is scaled proportionally, with the output reflecting subtle fluctuations
+    # formatted to two decimal places for precision.
+
+    def CalculateMinorScale(self,MajorScale):
+        # Ensure the MajorScale is within the allowed range
+        MajorScale=int(MajorScale)
+        if MajorScale>10:
+            MajorScale=10
+        elif MajorScale<-10:
+            MajorScale=-10
+
+        # Determine the range of the MinorScale based on the MajorScale
+        if MajorScale==0:
+            MinorMax=0.1
+            MinorMin=-0.1
+        elif MajorScale>0:
+            MinorMax=0.1 - 0.01 * MajorScale
+            MinorMin=-0.1
+        else:  # MajorScale<0
+            MinorMax=0.1
+            MinorMin=-0.1 + 0.01 * abs(MajorScale)
+
+        # Format MinorMax and MinorMin to one decimal place
+        MinorMax=float(f"{MinorMax:.2f}")
+        MinorMin=float(f"{MinorMin:.2f}")
+        return MinorMax, MinorMin
+
+    # The `CalculateEmotionalScore` function evaluates and updates the
+    # emotional score (`escore`) of a conversation, using an external
+    # classifier to assess the sentiment of the provided text. Starting with a
+    # baseline `escore` (read from a file if available), it adjusts the
+    # scoring range based on the `CalculateMinorScale` function, which
+    # determines acceptable emotional variability. If the bot includes an
+    # emotional classifier, the function calculates an additional sentiment
+    # score (`mscore`) using the AI classifier and adjusts the `escore`
+    # accordingly. The updated score is written back to the file, and any
+    # placeholders in the response buffer (`buff`) are replaced with the new
+    # score, ensuring dynamic emotional feedback.
+
+    def CalculateEmotionalScore(self,instr,input):
+        # Don't waste cycles if theres no defined classifier instruction file
+        if self.EScoreInstruction is not None and not os.path.exists(self.EScoreInstruction):
+            return instr,0
+
+        # Figure out Emotional Score
+        escore=0
+        if os.path.exists(self.EScoreFile):
+            try:
+                escore=float(ReadFile(self.EScoreFile).strip())
+            except:
+                pass
+
+        lval,rval=self.CalculateMinorScale(escore)
+        mscore=0    # Nuetral
+
+        # Running the classifier
+        resp=self.AIClassifier(instr,input,FailResp="0",lval=lval,rval=rval,nsfw=self.allowNSFW)
+        if resp:
+            try:
+                mscore=float(resp)
+                escore+=mscore
+                FF.WriteFile(self.EScoreFile,f"{escore:.2f}\n")
+                if '{ESNEUTRAL}' in instr:
+                    instr=buff.replace('{ESNEUTRAL}',f'{escore:.2f}')
+            except:
+                return instr,escore
+        return instr,escore
+
     # The `Read` function is designed to read data from a memory file located
     # at `self.MemoryLocation`, if it exists. It reads the file line by line,
     # attempting to parse each line as JSON data. If a line fails to parse, an
@@ -507,9 +606,9 @@ class Agent:
             enc=AutoTokenizer.from_pretrained(self.model)
         elif self.engine=='cohere':
             if self.usertokens is not None:
-                Tokens=FF.ReadTokens(userhome=self.usertokens)
+                Tokens=FF.ReadTokens(gid=self.discordGID,userhome=self.usertokens)
             else:
-                Tokens=FF.ReadTokens(userhome=self.userhome)
+                Tokens=FF.ReadTokens(gid=self.discordGID,userhome=self.userhome)
             enc=cohere.ClientV2(api_key=Tokens['Cohere'])
 
         # Calculate current tokens in data
@@ -608,9 +707,9 @@ class Agent:
     def JumpTable(self,messages,seed=0,mt=2048):
         # Read tokens
         if self.usertokens is not None:
-            Tokens=FF.ReadTokens(userhome=self.usertokens)
+            Tokens=FF.ReadTokens(gid=self.discordGID,userhome=self.usertokens)
         else:
-            Tokens=FF.ReadTokens(userhome=self.userhome)
+            Tokens=FF.ReadTokens(gid=self.discordGID,userhome=self.userhome)
 
         # Add a test that the token is actually available
 
@@ -698,11 +797,15 @@ class Agent:
             self.Reset()
 
         # Load the system role only ONCE
-
         if self.persona is not None and self.persona.lower()!="none":
             SystemRole=self.GetPersona(self.persona,nsfw=self.allowNSFW,channel=self.discordChannel)
         else:
             SystemRole=self.SystemRoleDefault
+
+        # Emotional Score. MUST be before primary agent reference
+        if self.EScoreInstruction:
+            SystemRole,escore=self.CalculateEmotionalScore(SystemRole,input)
+
         self.Put("system",SystemRole,reset=True)
 
         # Read any existing memory if not in isolation
@@ -831,6 +934,8 @@ class Agent:
 
             # Update and add the raw response
             self.UpdateLast("result",str(self.completion))
+            if self.EScoreInstruction:
+                self.UpdateLast("escore",str(escore))
 
             # Save to disk
             if self.save and not self.isolation:
@@ -845,6 +950,97 @@ class Agent:
 
         if self.ModelLock:
             self.ModelLock.Unlock()
+
+        # response can be None
+
+        return self.response
+
+    # AIClassifier that uses current service/model. This works because system role
+    # ALWAYS resets message list.
+
+    @DF.function_trapper(None)
+    def AIClassifier(self,classifier,text,FailResp="No",lval=None,rval=None,nsfw=False):
+        # Make sure classifier exists
+        if nsfw and os.path.exists(classifier+'.nsfw'):
+            classifier+='.nsfw'
+        if not os.path.exists(classifier):
+            return FailResp
+
+        # Lock the model
+
+        if self.ModelLock:
+            self.ModelLock.Lock()
+
+        instr=ReadFile(classifier).replace('\n',' ').strip()
+        if lval:
+            instr=instr.replace('{lval}',f'{lval}')
+        if rval:
+            instr=instr.replace('{rval}',f'{rval}')
+
+        # Sys up classifier instructions
+        self.Put("system",instr,reset=True)
+        # Add users input to the memory
+        self.Put("user",text)
+
+        # Maintain the token limit for the engine/model
+        wm,ct=self.MaintainTokenLimit()
+        if wm==None: # Will be None if over token limit
+            self.response=None
+
+            # Unock the model
+            if self.ModelLock:
+                self.ModelLock.Unlock()
+
+            # Return failed response
+            return FailResp
+
+        # Send AI service the messages
+
+        startTime=time.time()
+        rc=0
+        msr=0
+        self.response=None
+        self.AIError=False
+        while self.response==None:
+            self.EnforceRatelimit()
+            self.JumpTable(wm)
+
+            # AI error, such as prohibited content, breaks retry loop
+            if self.AIError:
+                break
+
+            # main retry level
+            if self.response==None:
+                time.sleep(self.retrytimeout)
+                msr=0   # Reset the size counter
+                if rc<self.maxretries:
+                    rc+=1
+                else:
+                    break
+
+            if self.maxrespsize>0 and len(self.response)>self.maxrespsize:
+                time.sleep(self.maxrespretrytimeout)
+                if msr<self.maxrespretry:
+                    msr+=1
+                else:
+                    msr=0   # Reset the size counter
+                    if rc<self.maxretries:
+                        self.response=None
+                        rc+=1
+                    else:
+                        break
+
+        endTime=time.time()
+        if self.timing:
+            FF.AppendFile(self.TimingLocation,f"{datetime.datetime.fromtimestamp(startTime).strftime('%Y-%m-%d %H:%M:%S')} {self.engine} {self.model} {endTime-startTime:.6f}\n")
+
+        # Unock the model
+        if self.ModelLock:
+            self.ModelLock.Unlock()
+
+        # Return failed response
+        if self.response is not None:
+            return FailResp
 
         # response can be None
 
@@ -1329,3 +1525,4 @@ class Agent:
             return FF.ReadFile(refname).replace('\n','\\n').replace("'","\'").replace('"',"'").strip()
 
         return None
+

@@ -405,3 +405,12 @@ def Reclaimation(o):
             # json library hates sockets... Still fix the hash table
             return set(o)
     return o
+
+# Set the running name of the program. Mainly for Discord and similar to pass the
+# token file as gid (server id). This is critical in certain situations where
+# different config files are needed, ie server level.
+
+def SetRunningName(rn):
+    global RunningName
+
+    RunningName=rn

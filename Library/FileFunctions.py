@@ -206,12 +206,16 @@ def ReadTokens(gid=None, userhome=None):
         # Handle everything else (ints, bools, etc)
         return item
 
+    # Show trace stack caller, diagnostically
+    # print(f">>> Caller: {inspect.stack()[1].function}")
+    # print(f">>> Caller: {inspect.stack()[2].function}")
+
     tokens={}
     ts=CF.TokenStorage
-    if userhome != None:
+    if userhome is not None:
         ts=userhome
 
-    if gid == None:
+    if gid is None:
         tfile=f"{ts}/{os.path.basename(CF.RunningName)}.tokens"
     else:
         tfile=f"{ts}/{gid}.tokens"
