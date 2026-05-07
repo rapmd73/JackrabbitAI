@@ -178,8 +178,6 @@ class Agent:
         self.userhome=None          # User home directory
         self.MemoryLocation=None    # Memory files location
         self.TimingLocation=None    # Timing file location
-        self.EScoreInstruction=None # Emotional Score instructions
-        self.EScoreFile=None        # Emotional Score data file
         self.usertokens=usertokens  # explicit path to tokens. OVERIDE user area
         self.UseOpenAI=UseOpenAI    # Use OpenAI libraries when available
         self.engine=engine.lower()  # AI engine for a memory item (token count)
@@ -208,6 +206,8 @@ class Agent:
         self.maxrespretrytimeout=maxrespretrytimeout # Number of seconds to wait between retries
         self.UseRateLimit=UseRateLimit and JRDLM    # Use rate limits only in JRDLM is available
         self.RateLimitWait=RateLimitWait
+        self.EScoreInstruction=None # Emotional Score instructions
+        self.EScoreFile=None        # Emotional Score data file
         self.Limiter=None
         self.ModelLock=None         # None by default for condirional testing
         self.discordGID=None        # Discord server ID
@@ -340,14 +340,14 @@ class Agent:
     def SetEmotionalScore(self,instr=None,escore=None):
         # Set emotional score instructions
         if instr is not None:
-            self.EScoreInstruction=instr
+            EScoreInstruction=instr
         else:
-            self.EScoreInstruction=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.EmotionInstructions"
+            EScoreInstruction=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.EmotionInstructions"
         # Set emotional score file
         if escore is not None:
-            self.EScoreFile=escore
+            EScoreFile=escore
         else:
-            self.EScoreFile=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.escore"
+            EScoreFile=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.escore"
 
     # The `SetStorage` function is a method that sets the storage locations for
     # memory and timing files within an object. It takes two optional
