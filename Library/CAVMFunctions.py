@@ -296,7 +296,7 @@ class ContextAwareVersionedMemory:
     def WordTokens(self, text):
         words = []
         for w in str(text).lower().split():
-            w = ''.join(c for c in w if c.isalnum())
+            w = ''.join(c for c in w if c.isalpha())    #isalnum
             if not w or w in self.STOP_WORDS:
                 continue
             if w.endswith('ies') and len(w) > 3:

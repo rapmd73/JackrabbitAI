@@ -2,6 +2,10 @@
 """CAVM v14 — View recently updated memory chains.
 Shows the most recently touched chains (by last_updated), with version counts
 and the latest version's top tokens and response snippet.
+
+Additional features:
+  - Condense output to one line per chain with -c/--condense
+  - Sort by number of versions with -V/--sort-versions
 """
 
 import sys
@@ -25,6 +29,10 @@ def parse_args():
                    help='Include response snippet (truncated)')
     p.add_argument('--dormant', action='store_true',
                    help='Show dormant chains instead of active ones')
+    p.add_argument('-c', '--condense', action='store_true',
+                   help='Condense output to one line per chain')
+    p.add_argument('-V', '--sort-versions', action='store_true',
+                   help='Sort chains by number of versions (descending) instead of last updated')
     return p.parse_args()
 
 def iso_to_local(iso_str):
@@ -68,8 +76,14 @@ def main():
         except Exception:
             return datetime.min.replace(tzinfo=timezone.utc)
 
-    items.sort(key=lambda x: get_last(x[1]), reverse=True)
-    tlen=len(items)
+    # Determine sort key
+    if args.sort_versions:
+        # Sort by version count descending, then by last_updated descending for tie-break
+        items.sort(key=lambda x: (len(x[1].get('versions', [])), get_last(x[1])), reverse=True)
+    else:
+        items.sort(key=lambda x: get_last(x[1]), reverse=True)
+
+    tlen = len(items)
     items = items[:args.number]
 
     if not items:
@@ -80,46 +94,71 @@ def main():
     print(f'  CAVM RECENT {label} CHAINS  (base={args.base})')
     print(f'{"="*60}')
     print(f'  Total {label.lower()}: {tlen}')
+    if args.sort_versions:
+        print('  Sorted by: number of versions (descending)')
+    else:
+        print('  Sorted by: last updated (descending)')
+    if args.condense:
+        print('  Output: condensed (one line per chain)')
     print()
 
-    for cid, p in items:
-        versions = p.get('versions', [])
-        vcount = len(versions)
-        last_str = p.get('last_updated', '')
-        last_dt = datetime.fromisoformat(last_str) if last_str else None
-        age = age_human(last_dt) if last_dt else 'unknown'
+    if args.condense:
+        # Header for condensed view (removed Updated column)
+        print(f'{"Chain ID":<30} {"Versions":<8} {"Age":<12} {"Top Tokens"}')
+        print(f'{"-"*30} {"-"*8} {"-"*12} {"-"*30}')
+        for cid, p in items:
+            versions = p.get('versions', [])
+            vcount = len(versions)
+            last_str = p.get('last_updated', '')
+            last_dt = datetime.fromisoformat(last_str) if last_str else None
+            age = age_human(last_dt) if last_dt else 'unknown'
+            latest = versions[-1] if versions else {}
+            # Show only top 3 tokens in condensed view
+            top_tokens = cavm.TopTokens(latest.get('tokens', {}), 3)
+            top_str = ' '.join(top_tokens) if top_tokens else ''
+            # Truncate chain id if too long
+            cid_disp = cid[:28] + ('..' if len(cid) > 28 else '')
+            print(f'{cid_disp:<30} {vcount:<8} {age:<12} {top_str}')
+    else:
+        # Original detailed view
+        for cid, p in items:
+            versions = p.get('versions', [])
+            vcount = len(versions)
+            last_str = p.get('last_updated', '')
+            last_dt = datetime.fromisoformat(last_str) if last_str else None
+            age = age_human(last_dt) if last_dt else 'unknown'
 
-        latest = versions[-1] if versions else {}
-        top_tokens = cavm.TopTokens(latest.get('tokens', {}), 10)
-        top_str = ' '.join(top_tokens) if top_tokens else '(empty)'
+            latest = versions[-1] if versions else {}
+            top_tokens = cavm.TopTokens(latest.get('tokens', {}), 10)
+            top_str = ' '.join(top_tokens) if top_tokens else '(empty)'
 
-        snippet = ''
-        if args.show_snippet and latest.get('response'):
-            resp = latest['response']
-            snippet = resp[:120] + ('...' if len(resp) > 120 else '')
+            snippet = ''
+            if args.show_snippet and latest.get('response'):
+                resp = latest['response']
+                snippet = resp[:120] + ('...' if len(resp) > 120 else '')
 
-        print(f'  Chain  : {cid[:24]}...')
-        print(f'  Verts  : {vcount}   Updated: {iso_to_local(last_str)} ({age})')
-        print(f'  Tokens : {top_str}')
-        if snippet:
-            # Show snippet on multiple lines if long
-            for line in snippet.split('\n')[:2]:
-                print(f'  Latest : {line[:100]}')
-        print()
-
-        if args.versions:
-            print(f'    Recent versions (up to 5):')
-            for v in reversed(versions[-5:]):
-                vn   = v.get('v', '?')
-                vt   = iso_to_local(v.get('last_updated', ''))
-                vtok = cavm.TopTokens(v.get('tokens', {}), 5)
-                inp  = (v.get('input','') or '')[:60]
-                print(f'      v{vn}: {vt}  tokens: {" ".join(vtok)}')
-                if inp:
-                    print(f'           input: {inp!r}')
-            if vcount > 5:
-                print(f'      ... (+{vcount - 5} older)')
+            print(f'  Chain  : {cid[:24]}...')
+            print(f'  Verts  : {vcount}   Updated: {iso_to_local(last_str)} ({age})')
+            print(f'  Tokens : {top_str}')
+            if snippet:
+                # Show snippet on multiple lines if long
+                for line in snippet.split('\n')[:2]:
+                    print(f'  Latest : {line[:100]}')
             print()
+
+            if args.versions:
+                print(f'    Recent versions (up to 5):')
+                for v in reversed(versions[-5:]):
+                    vn   = v.get('v', '?')
+                    vt   = iso_to_local(v.get('last_updated', ''))
+                    vtok = cavm.TopTokens(v.get('tokens', {}), 5)
+                    inp  = (v.get('input','') or '')[:60]
+                    print(f'      v{vn}: {vt}  tokens: {" ".join(vtok)}')
+                    if inp:
+                        print(f'           input: {inp!r}')
+                if vcount > 5:
+                    print(f'      ... (+{vcount - 5} older)')
+                print()
 
 if __name__ == '__main__':
     main()
