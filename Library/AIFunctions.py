@@ -843,11 +843,21 @@ class Agent:
             for score, cid, ver, tokens in hits[:3]:
                 profile=sCAVM.GetProfile(cid)
                 vData=profile['versions'][ver-1]
+
                 if vData['response']:
-                    ans=f"Our past exchange, version ({ver}):\n\n{vData['response']}\n\n(Update as neccessary)"
+                    ans=f"Our past exchange, ({cid} {ver}):\n\n{vData['response']}\n\n(Update/use as neccessary)"
+                    self.Put("assistant",ans)
+
+                    rhits=sCAVM.Search(vData['input'])   # Related
+                    for rscore, rcid, rver, rtokens in rhits[:3]:
+                        rprofile=sCAVM.GetProfile(rcid)
+                        rData=rprofile['versions'][rver-1]
+                        if rData['response']:
+                            ans=f"Related to previous response ({rcid} {rver}):\n\n{rData['response']}\n\n(Update/use as neccessary)"
+                            self.Put("assistant",ans)
                 else:
-                    ans=f"Our past exchange, version ({ver}):\n\n{vData['input']}\n\n(Update as neccessary)"
-                self.Put("assistant",ans)
+                    ans=f"Our past exchange, version ({cid} {ver}):\n\n{vData['input']}\n\n(Update as neccessary)\n\n"
+                    self.Put("assistant",ans)
 
         # Add users input to the memory
         self.Put("user",input)
