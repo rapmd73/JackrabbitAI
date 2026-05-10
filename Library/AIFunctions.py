@@ -838,11 +838,13 @@ class Agent:
 
         # Search system CAVM
         if self.UseCAVM:
+            rcidUsed=[]
             sCAVM=CAVM.ContextAwareVersionedMemory()
             hits=sCAVM.Search(input)
             for score, cid, ver, tokens in hits[:3]:
                 profile=sCAVM.GetProfile(cid)
                 vData=profile['versions'][ver-1]
+                rcidUsed.append(cid)        # Don't relate to the original search
 
                 if vData['response']:
                     ans=f"Our past exchange, ({cid} {ver}):\n\n{vData['response']}\n\n(Update/use as neccessary)"
@@ -850,6 +852,13 @@ class Agent:
 
                     rhits=sCAVM.Search(vData['input'])   # Related
                     for rscore, rcid, rver, rtokens in rhits[:3]:
+                        # Make sure no duplicate usage
+                        if rcid==cid:
+                            continue
+                        if rcid in rcidUsed:
+                            continue
+                        rcidUsed.append(rcid)
+                        # Find related content
                         rprofile=sCAVM.GetProfile(rcid)
                         rData=rprofile['versions'][rver-1]
                         if rData['response']:
