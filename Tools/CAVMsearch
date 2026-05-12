@@ -88,6 +88,10 @@ Examples:
                    help='Minimum similarity threshold (overrides CAVM default)')
     p.add_argument('--debug-tokens', action='store_true',
                    help='Show full token breakdown for debugging')
+    p.add_argument('-r', '--related', type=int, default=3,
+                   help='Show top N related chains for each result (default: 3)')
+    p.add_argument('--related-threshold', type=float, default=0.0,
+                   help='Minimum similarity score to show a related chain (default: 0.0)')
     return p.parse_args()
 
 
@@ -105,6 +109,51 @@ def compute_token_stats(query_tokens, version_tokens):
     matched_count = len(matched)
     matched.sort(key=lambda x: x[1], reverse=True)
     return matched_count, total_weight, matched
+
+
+def top_related_chains(target_tokens, all_profiles, target_cid, cavm, k=3, min_score=0.0):
+    """Return list of (score, cid, latest_v_idx) sorted desc excluding target_cid.
+
+    - target_tokens: token dict for the target chain's latest version
+    - all_profiles: dict of cid -> profile (candidate pool)
+    - cavm: CAVM module instance (provides CosineLike, TopTokens)
+    - k: number of related chains to return
+    - min_score: minimum similarity to include
+    """
+    related = []
+    if not target_tokens:
+        return []
+
+    # Precompute norm for fallback cosine if needed
+    def fallback_cosine(a, b):
+        num = 0.0
+        for t, w in a.items():
+            num += w * b.get(t, 0.0)
+        denom_a = sum(v * v for v in a.values()) ** 0.5
+        denom_b = sum(v * v for v in b.values()) ** 0.5
+        denom = denom_a * denom_b
+        return (num / denom) if denom else 0.0
+
+    for other_cid, profile in all_profiles.items():
+        if other_cid == target_cid:
+            continue
+        versions = profile.get('versions', [])
+        if not versions:
+            continue
+        other_latest = versions[-1]
+        other_tokens = other_latest.get('tokens', {})
+        if not other_tokens:
+            continue
+        # Try to use cavm.CosineLike if available
+        try:
+            sc = cavm.CosineLike(target_tokens, other_tokens)
+        except Exception:
+            sc = fallback_cosine(target_tokens, other_tokens)
+        if sc >= min_score:
+            related.append((sc, other_cid, other_latest.get('v', len(versions))))
+
+    related.sort(key=lambda x: x[0], reverse=True)
+    return related[:k]
 
 
 def format_score(score, threshold):
@@ -158,6 +207,9 @@ def main():
         if not results:
             print("No active chains match that query.")
             return
+
+    # Candidate pool for related comparisons: respect dormant filtering
+    candidate_profiles = {cid: p for cid, p in profiles.items() if (args.all_chains or cid not in dormant)}
 
     print(f"{'='*70}")
     print(f"  SEARCH RESULTS  —  '{query_str}'")
@@ -248,6 +300,18 @@ def main():
             if len(sorted_tokens) > 15:
                 print(f"       ... ({len(sorted_tokens)-15} more tokens)")
             print()
+
+        # Related chains
+        if args.related and candidate_profiles:
+            rel = top_related_chains(latest_tokens, candidate_profiles, cid, cavm, k=args.related, min_score=args.related_threshold)
+            if rel:
+                print(f"     Related chains (top {len(rel)}):")
+                for r_score, r_cid, r_v in rel:
+                    r_profile = profiles.get(r_cid)
+                    r_latest = r_profile['versions'][-1] if r_profile else {}
+                    r_top = cavm.TopTokens(r_latest.get('tokens', {}), 6)
+                    print(f"       - {r_cid}  score={r_score:.4f}  v{r_v}  top: {' '.join(r_top[:6])}")
+                print()
 
     print(f"{'='*70}")
     print(f"  Found {len(results)} chain(s) matching query.")
