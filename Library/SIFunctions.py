@@ -189,6 +189,7 @@ class SignalInterceptor():
 
     # Very simple multiprocessing methodology.
 
+    def StartProcess(self,func,args=None,kwargs=None):
         if args==None:
             args=[]
         if kwargs==None:
