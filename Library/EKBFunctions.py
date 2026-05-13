@@ -173,9 +173,31 @@ class ExpertKnowledgeBase:
         self.BASE=os.path.dirname(Base) if Base is not None else '/home/JackrabbitAI/Memory/EKB'
         FF.mkdir(self.BASE)
 
+    # Set or override the base directory for the knowledge base. The
+    # project convention: a .ekb path is treated as the EKB directory
+    # itself (even though it looks like a filename). Examples:
+
+    #   /.../Koiki.396...private.memory.ekb <-- this entire path is the
+    #   EKB directory
+
+    # If a non-.ekb path is provided, we append '.ekb' to form the directory.
+
     def SetLocation(self, path):
-        # Set or override the base directory for the knowledge base
-        self.BASE=os.path.dirname(path)
+        # If the caller passed an existing directory, use it as-is.
+        if os.path.isdir(path):
+            base = path
+        else:
+            # If the path already ends with the .ekb suffix, treat the whole thing as the directory
+            if path.lower().endswith('.ekb'):
+                base = path
+            else:
+                # Otherwise, construct the EKB directory by appending the suffix
+                base = f"{path}.ekb"
+
+        # Normalize to absolute path and create the directory using the project's FileFunctions
+        base = os.path.abspath(base)
+        self.BASE = base
+        FF.mkdir(self.BASE)
 
     def Reduce(self, text):
         # Turn text into keywords

@@ -322,32 +322,122 @@ class Agent:
 
     # Set the memory and timing locations separately
 
-    def SetMemory(self,memory=None,timing=None):
+    def SetMemory(self, memory=None, timing=None):
         # Set memory database
+        base_dir = os.path.dirname(self.MemoryLocation) or os.getcwd()
+
         if memory is not None:
-            self.MemoryLocation=f"{memory}" #"/{os.path.basename(CF.RunningName)}.memory"
+
+            # If the caller provided a full reference (has directory AND
+            # extension), accept as-is
+
+            mem_dir_part = os.path.dirname(memory)
+            mem_base = os.path.basename(memory)
+            mem_root, mem_ext = os.path.splitext(mem_base)
+
+            if mem_dir_part and mem_ext:
+                mem_path = memory
+            else:
+                # Not a complete reference: place into base_dir and ensure extension
+                mem_path = os.path.join(base_dir, mem_base)
+                if mem_ext == '':
+                    mem_path = mem_path if mem_path.endswith('.memory') else f"{mem_path}.memory"
         else:
-            self.MemoryLocation=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.memory"
+            mem_path = os.path.join(base_dir, f"{os.path.basename(CF.RunningName)}.memory")
+
+        # Final ensure memory has .memory extension (covers edge cases)
+        mem_root, mem_ext = os.path.splitext(mem_path)
+        if mem_ext == '':
+            mem_path = mem_path if mem_path.endswith('.memory') else f"{mem_path}.memory"
+
+        self.MemoryLocation = mem_path
+
         # Set timing file
         if timing is not None:
-            self.TimingLocation=f"{timing}" #/{os.path.basename(CF.RunningName)}.timing"
+            time_dir_part = os.path.dirname(timing)
+            time_base = os.path.basename(timing)
+            time_root, time_ext = os.path.splitext(time_base)
+
+            # If caller provided a full reference (dir + ext), accept as-is
+            if time_dir_part and time_ext:
+                time_path = timing
+            else:
+                # If timing has no directory, place it in memory's directory
+                if not time_dir_part:
+                    time_path = os.path.join(os.path.dirname(self.MemoryLocation) or os.getcwd(), time_base)
+                else:
+                    # Has directory but missing extension: keep dir, append extension
+                    time_path = os.path.join(time_dir_part, time_base)
+
+                if time_ext == '':
+                    time_path = time_path if time_path.endswith('.timing') else f"{time_path}.timing"
         else:
-            self.TimingLocation=f"{os.path.dirname(self.MemoryLocation)}/{os.path.basename(CF.RunningName)}.timing"
-        # Make memory location
-        FF.mkdir(os.path.dirname(self.MemoryLocation))
+            # default: same directory as memory
+            time_path = os.path.join(os.path.dirname(self.MemoryLocation) or os.getcwd(), f"{os.path.basename(CF.RunningName)}.timing")
+
+        self.TimingLocation = time_path
+
+        # Make memory directory (ensure it exists)
+        mem_dir = os.path.dirname(os.path.abspath(self.MemoryLocation)) or os.getcwd()
+        FF.mkdir(mem_dir)
+
+        # Ensure timing directory exists as well (timing may live in a very different dir)
+        timing_dir = os.path.dirname(os.path.abspath(self.TimingLocation)) or os.getcwd()
+        # Only attempt to mkdir if it's different or missing; FF.mkdir should handle exist_ok semantics
+        if timing_dir:
+            FF.mkdir(timing_dir)
 
     # Set the Emotional Score to its proper location AND name
-    def SetEmotionalScore(self,instr=None,escore=None):
-        # Set emotional score instructions
+
+    def SetEmotionalScore(self, instr=None, escore=None):
+        # Ensure base directory is the same context as MemoryLocation (fallback to cwd)
+        base_dir = os.path.dirname(self.MemoryLocation) or os.getcwd()
+
+        # Instructions path: accept only complete references (dir + ext) as-is,
+        # otherwise place into base_dir and ensure an extension
         if instr is not None:
-            EScoreInstruction=instr
+            instr_dir = os.path.dirname(instr)
+            instr_base = os.path.basename(instr)
+            instr_root, instr_ext = os.path.splitext(instr_base)
+
+            if instr_dir and instr_ext:
+                instr_path = instr
+            else:
+                instr_path = os.path.join(base_dir, instr_base)
+                if instr_ext == '':
+                    instr_path = instr_path if instr_path.endswith('.EmotionInstructions') else f"{instr_path}.EmotionInstructions"
         else:
-            EScoreInstruction=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.EmotionInstructions"
-        # Set emotional score file
+            instr_path = os.path.join(base_dir, f"{os.path.basename(CF.RunningName)}.EmotionInstructions")
+
+        self.EScoreInstruction = instr_path
+
+        # Emotional score file: must be a full directory, name, and extension
         if escore is not None:
-            EScoreFile=escore
+            esc_dir = os.path.dirname(escore)
+            esc_base = os.path.basename(escore)
+            esc_root, esc_ext = os.path.splitext(esc_base)
+
+            if esc_dir and esc_ext:
+                esc_path = escore
+            else:
+                esc_path = os.path.join(base_dir, esc_base)
+                if esc_ext == '':
+                    esc_path = esc_path if esc_path.endswith('.escore') else f"{esc_path}.escore"
         else:
-            EScoreFile=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.escore"
+            esc_path = os.path.join(base_dir, f"{os.path.basename(CF.RunningName)}.escore")
+
+        self.EScoreFile = esc_path
+
+        # Ensure both directories exist (instruction/timing may be in different locations)
+        instr_dir_final = os.path.dirname(os.path.abspath(self.EScoreInstruction)) or os.getcwd()
+        esc_dir_final = os.path.dirname(os.path.abspath(self.EScoreFile)) or os.getcwd()
+
+        # Use FF.mkdir (library's file utilities) to create directories
+        if instr_dir_final:
+            FF.mkdir(instr_dir_final)
+
+        if esc_dir_final:
+            FF.mkdir(esc_dir_final)
 
     # The `SetStorage` function is a method that sets the storage locations for
     # memory and timing files within an object. It takes two optional
