@@ -169,13 +169,13 @@ class ExpertKnowledgeBase:
         }
 
         # Configuration
-        self.LANG = 'english'
-        self.BASE=Base if Base is not None else '/home/JackrabbitAI/Memory/EKB'
+        self.LANG='english'
+        self.BASE=os.path.dirname(Base) if Base is not None else '/home/JackrabbitAI/Memory/EKB'
         FF.mkdir(self.BASE)
 
     def SetLocation(self, path):
         # Set or override the base directory for the knowledge base
-        self.BASE=path
+        self.BASE=os.path.dirname(path)
 
     def Reduce(self, text):
         # Turn text into keywords

@@ -325,12 +325,12 @@ class Agent:
     def SetMemory(self,memory=None,timing=None):
         # Set memory database
         if memory is not None:
-            self.MemoryLocation=f"{memory}/{os.path.basename(CF.RunningName)}.memory"
+            self.MemoryLocation=f"{memory}" #"/{os.path.basename(CF.RunningName)}.memory"
         else:
             self.MemoryLocation=f"{self.MemoryLocation}/{os.path.basename(CF.RunningName)}.memory"
         # Set timing file
         if timing is not None:
-            self.TimingLocation=f"{timing}/{os.path.basename(CF.RunningName)}.timing"
+            self.TimingLocation=f"{timing}" #/{os.path.basename(CF.RunningName)}.timing"
         else:
             self.TimingLocation=f"{os.path.dirname(self.MemoryLocation)}/{os.path.basename(CF.RunningName)}.timing"
         # Make memory location
