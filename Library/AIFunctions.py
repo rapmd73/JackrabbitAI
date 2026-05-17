@@ -144,6 +144,7 @@ class Agent:
 
         self.AIJumpTable = {
             'openai': self.GetOpenAI,
+            'minimax': self.GetMiniMax,
             'mistral': self.GetMistral,
             'googleai': self.GetGoogleAI,
             'xai': self.GetxAI,
@@ -158,6 +159,7 @@ class Agent:
             'huggingface': self.GetHuggingFace }
         self.AITokenMap = {
             'openai': 'OpenAI',
+            'minimax': 'MiniMax',,
             'mistral': 'Mistral',
             'googleai': 'GoogleAI',
             'xai': 'xAI',
@@ -823,7 +825,7 @@ class Agent:
                 self.response=None
                 self.completion=None
         except Exception as err:
-            print(f"JumpTable ERROR: {sys.exc_info()[-1].tb_lineno}/{err}: Check token file")
+#            print(f"JumpTable ERROR: {sys.exc_info()[-1].tb_lineno}/{err}: Check token file")
             self.response=None
             self.completion=None
 
@@ -1206,6 +1208,29 @@ class Agent:
 
         response=completion.choices[0].message.content.strip()
         return response,completion
+
+    # MiniMax
+
+    @DF.function_trapper(None)
+    def GetMiniMax(self,apikey,messages,model,freqpenalty,temperature,timeout):
+        clientAI=openai.OpenAI(api_key=apikey,base_url="https://api.minimax.io/v1")
+        completion=clientAI.chat.completions.create(
+                model=model,
+                frequency_penalty=freqpenalty,
+                temperature=temperature,
+                messages=messages,
+                timeout=timeout
+            )
+        clientAI.close()
+
+        self.stop=completion.choices[0].finish_reason.lower()
+        if self.stop!='stop':
+            self.AIError=True
+
+        response=completion.choices[0].message.content.strip()
+        return response,completion
+
+    # NVidia
 
     @DF.function_trapper(None)
     def GetNVidia(self,apikey,messages,model,freqpenalty,temperature,timeout):
