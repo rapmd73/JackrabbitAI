@@ -1019,7 +1019,7 @@ class Agent:
             # identified so far that provides consistent and deliberate
             # control over this issue.
 
-            if self.maxrespsize>0 and len(self.response)>self.maxrespsize:
+            if self.response and self.maxrespsize>0 and len(self.response)>self.maxrespsize:
                 time.sleep(self.maxrespretrytimeout)
                 if msr<self.maxrespretry:
                     msr+=1
@@ -1429,9 +1429,13 @@ class Agent:
             )
         clientAI.close()
 
-        self.stop=completion.choices[0].finish_reason.lower()
-        if self.stop!='stop':
+        try:
+            self.stop=completion.choices[0].finish_reason.lower()
+            if self.stop!='stop':
+                self.AIError=True
+        except Exception as err:
             self.AIError=True
+            return None, None
 
         response=None
         if completion.choices[0].message.content:
