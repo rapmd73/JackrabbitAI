@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 # Jackrabit AI
 # 2024-2026 Copyright © Robert APM Darin
 # All rights reserved unconditionally.

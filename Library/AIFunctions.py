@@ -1433,7 +1433,9 @@ class Agent:
         if self.stop!='stop':
             self.AIError=True
 
-        response=completion.choices[0].message.content.strip()
+        response=None
+        if completion.choices[0].message.content:
+            response=completion.choices[0].message.content.strip()
         return response,completion
 
     @DF.function_trapper(None)
