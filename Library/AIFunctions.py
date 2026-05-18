@@ -159,7 +159,7 @@ class Agent:
             'huggingface': self.GetHuggingFace }
         self.AITokenMap = {
             'openai': 'OpenAI',
-            'minimax': 'MiniMax',,
+            'minimax': 'MiniMax',
             'mistral': 'Mistral',
             'googleai': 'GoogleAI',
             'xai': 'xAI',
@@ -176,6 +176,7 @@ class Agent:
         self.UseEKB=UseEKB          # Using the EKB
         self.UseCAVM=UseCAVM        # Using CAVM
         self.AIError=False          # Error in the AI engine, breaks retry
+        self.AIErrorMSG=None        # AI engine error message
         self.user=None              # User name
         self.userhome=None          # User home directory
         self.MemoryLocation=None    # Memory files location
@@ -981,6 +982,7 @@ class Agent:
         msr=0
         self.response=None
         self.AIError=False
+        self.AIErrorMSG=None
         while self.response==None:
             self.EnforceRatelimit()
             self.JumpTable(wm)
@@ -1205,6 +1207,7 @@ class Agent:
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
@@ -1214,18 +1217,24 @@ class Agent:
     @DF.function_trapper(None)
     def GetMiniMax(self,apikey,messages,model,freqpenalty,temperature,timeout):
         clientAI=openai.OpenAI(api_key=apikey,base_url="https://api.minimax.io/v1")
-        completion=clientAI.chat.completions.create(
-                model=model,
-                frequency_penalty=freqpenalty,
-                temperature=temperature,
-                messages=messages,
-                timeout=timeout
-            )
-        clientAI.close()
+        try:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout,
+                    extra_body={"reasoning_split": True}
+                )
+            clientAI.close()
+        except Exception as err:
+            self.AIError=True
+            self.AIErrorMSG=f"{err}"
+            return None, None
 
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
@@ -1235,18 +1244,24 @@ class Agent:
     @DF.function_trapper(None)
     def GetNVidia(self,apikey,messages,model,freqpenalty,temperature,timeout):
         clientAI=openai.OpenAI(api_key=apikey,base_url="https://integrate.api.nvidia.com/v1")
-        completion=clientAI.chat.completions.create(
-                model=model,
-                frequency_penalty=freqpenalty,
-                temperature=temperature,
-                messages=messages,
-                timeout=timeout
-            )
-        clientAI.close()
+        try:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+            clientAI.close()
+        except Exception as err:
+            self.AIError=True
+            self.AIErrorMSG=f"{err}"
+            return None, None
 
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
@@ -1254,18 +1269,24 @@ class Agent:
     @DF.function_trapper(None)
     def GetMistral(self,apikey,messages,model,freqpenalty,temperature,timeout):
         clientAI=openai.OpenAI(api_key=apikey,base_url="https://api.mistral.ai/v1/")
-        completion=clientAI.chat.completions.create(
-                model=model,
-                frequency_penalty=freqpenalty,
-                temperature=temperature,
-                messages=messages,
-                timeout=timeout
-            )
-        clientAI.close()
+        try:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+            clientAI.close()
+        except Exception as err:
+            self.AIError=True
+            self.AIErrorMSG=f"{err}"
+            return None, None
 
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
@@ -1293,6 +1314,7 @@ class Agent:
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
@@ -1325,6 +1347,7 @@ class Agent:
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
@@ -1445,21 +1468,28 @@ class Agent:
     @DF.function_trapper(None)
     def GetOpenRouter(self,apikey,messages,model,freqpenalty,temperature,timeout):
         clientAI=openai.OpenAI(api_key=apikey,base_url="https://openrouter.ai/api/v1")
-        completion=clientAI.chat.completions.create(
-                model=model,
-                frequency_penalty=freqpenalty,
-                temperature=temperature,
-                messages=messages,
-                timeout=timeout
-            )
-        clientAI.close()
+        try:
+            completion=clientAI.chat.completions.create(
+                    model=model,
+                    frequency_penalty=freqpenalty,
+                    temperature=temperature,
+                    messages=messages,
+                    timeout=timeout
+                )
+            clientAI.close()
+        except Exception as err:
+            self.AIError=True
+            self.AIErrorMSG=f"{err}"
+            return None, None
 
         try:
             self.stop=completion.choices[0].finish_reason.lower()
             if self.stop!='stop':
                 self.AIError=True
+                self.AIErrorMSG=None
         except Exception as err:
             self.AIError=True
+            self.AIErrorMSG=f"{err}"
             return None, None
 
         response=None
@@ -1507,6 +1537,7 @@ class Agent:
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
@@ -1525,6 +1556,7 @@ class Agent:
         self.stop=completion.choices[0].finish_reason.lower()
         if self.stop!='stop':
             self.AIError=True
+            self.AIErrorMSG=None
 
         response=completion.choices[0].message.content.strip()
         return response,completion
