@@ -279,6 +279,12 @@ _KNOWN_E_ROOTS = {
     "hat", "lat", "hop",
 }
 
+# Derivational exceptions: words we want to preserve (do not strip derivational suffixes)
+_DERIVATIONAL_EXCEPTIONS = {
+    'sanction',
+    # add more exceptions here as needed
+}
+
 # ---------------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------------
@@ -476,6 +482,9 @@ def _ly(w: str) -> str:
 
 def _derivational(w: str) -> str:
     """One pass of derivational suffix removal. Returns the stem or original."""
+    # Exceptions: do not strip derivational suffixes for these lemmas
+    if w in _DERIVATIONAL_EXCEPTIONS:
+        return w
     # -ness (with inline -ful cascade for -fulness)
     if w.endswith("ness") and len(w) > 5:
         base = w[:-4]
