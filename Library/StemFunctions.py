@@ -282,6 +282,21 @@ _KNOWN_E_ROOTS = {
 # Derivational exceptions: words we want to preserve (do not strip derivational suffixes)
 _DERIVATIONAL_EXCEPTIONS = {
     'sanction',
+    'police',
+    'auction',
+    'seduction',
+    'production',
+    'valediction',
+    'conjunction',
+    'function',
+    'infraction',
+    'fraction',
+    'reduction',
+    'induction',
+    'attraction',
+    'ration',
+    'conflation',
+    'compunction'
     # add more exceptions here as needed
 }
 
@@ -381,6 +396,9 @@ def _ing(w: str) -> str:
     base = w[:-3]
     if not _has_vowel(base):
         return w
+    for cand in (base, base + 'e'):
+        if cand in _DERIVATIONAL_EXCEPTIONS:
+            return cand
     if base.endswith("y"):
         return base + "ie" if base in ("d", "l", "t") else base
     if _double_consonant(base):
@@ -411,6 +429,9 @@ def _ed(w: str) -> str:
     base = w[:-2]
     if not _has_vowel(base):
         return w
+    for cand in (base, base + 'e'):
+        if cand in _DERIVATIONAL_EXCEPTIONS:
+            return cand
     if base.endswith("i"):
         return base + "e" if len(base) <= 2 else base[:-1] + "y"
     if _double_consonant(base):
@@ -881,6 +902,7 @@ def run_tests():
         ("user friendliness", "user friendly"),
         ("deep-learning",     "deep-learn"),
         ("multi-threading",   "multi-thread"),
+        ("policing",          "police"),
 
         # Suffix coverage additions requested
         ("careless",           "careless"),

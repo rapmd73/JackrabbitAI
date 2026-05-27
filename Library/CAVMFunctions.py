@@ -312,7 +312,7 @@ class ContextAwareVersionedMemory:
             if not parts:
                 continue
             for p in parts:
-                if not p or p in self.STOP_WORDS:
+                if not p or p in self.STOP_WORDS or len(p)<2:
                     continue
                 # Apply reduction mapping first so keys match original surface forms
                 if self.UseReduce and hasattr(self, 'REDUCE') and p in self.REDUCE:
