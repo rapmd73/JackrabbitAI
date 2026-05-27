@@ -214,9 +214,10 @@ _KNOWN_E_ROOTS = {
 
 # Derivational exceptions: words we want to preserve (do not strip derivational suffixes)
 _DERIVATIONAL_EXCEPTIONS = {
-    'news', 'sanction', 'election', 'erection', 'police', 'auction', 'seduction',
-    'production', 'valediction', 'conjunction', 'function', 'infraction', 'fraction',
-    'reduction', 'induction', 'attraction', 'ration', 'conflation', 'compunction', }
+    'compunction', 'companion', 'infraction', 'news', 'sanction', 'emotion', 'election',
+    'erection', 'police', 'auction', 'seduction', 'production', 'valediction', 'conjunction',
+    'function', 'infraction', 'fraction', 'reduction', 'induction', 'attraction', 'ration',
+    'conflation', 'compunction', }
 
 # ---------------------------------------------------------------------------
 # HELPERS
