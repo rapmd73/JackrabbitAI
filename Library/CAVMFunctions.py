@@ -8,15 +8,18 @@
 # Context-Aware Versioned Memory
 
 import sys
-sys.path.append('/home/GitHub/JackrabbitDLM')
+sys.path.append('/home/JackrabbitAI/Library')
+sys.path.append('/home/JackrabbitDLM')
 import os
 import json
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 import hashlib
+import re
 
 import CoreFunctions as CF
 import FileFunctions as FF
+import StemFunctions as SF
 
 import DLMLocker as DLM
 
@@ -291,20 +294,40 @@ class ContextAwareVersionedMemory:
     # - This method is called internally by Tokenize() and is not typically called directly by external code
 
     def WordTokens(self, text):
+        """Tokenize text into meaningful alphabetic tokens.
+
+        Behavior:
+        - Lowercase and split on whitespace.
+        - Split tokens into alphabetic runs (handles hyphens, punctuation) and treat each run separately.
+        - Apply REDUCE mapping before stemming (so mappings match source words).
+        - Use SF.Stem on each run.
+        - Filter stop-words before and after normalization.
+        """
         words = []
+        if text is None:
+            return words
         for w in str(text).lower().split():
-            w = ''.join(c for c in w if c.isalpha())    #isalnum
-            if not w or w in self.STOP_WORDS:
+            # Extract alphabetic runs (handles hyphenated/compound tokens)
+            parts = re.findall(r"[A-Za-z]+", w)
+            if not parts:
                 continue
-            if w.endswith('ies') and len(w) > 3:
-                w = w[:-3] + 'y'
-            elif w.endswith('ing') and len(w) > 3:
-                w = w[:-3]
-            elif w.endswith('s') and len(w) > 1:
-                w = w[:-1]
-            if self.UseReduce and hasattr(self, 'REDUCE') and w in self.REDUCE:
-                w = self.REDUCE[w]
-            words.append(w)
+            for p in parts:
+                if not p or p in self.STOP_WORDS:
+                    continue
+                # Apply reduction mapping first so keys match original surface forms
+                if self.UseReduce and hasattr(self, 'REDUCE') and p in self.REDUCE:
+                    p_mapped = self.REDUCE[p]
+                else:
+                    p_mapped = p
+                # Stem the mapped component
+                try:
+                    stemmed = SF.Stem(p_mapped)
+                except Exception:
+                    # If the stemmer fails for any reason, fall back to the mapped token
+                    stemmed = p_mapped
+                if not stemmed or stemmed in self.STOP_WORDS:
+                    continue
+                words.append(stemmed)
         return words
 
     # Tokenize Method Documentation

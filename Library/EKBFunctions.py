@@ -55,10 +55,12 @@
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import os
+import re
 
 import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
+import StemFunctions as SF
 
 class ExpertKnowledgeBase:
     def __init__(self, Base='/home/JackrabbitAI/Memory/EKB'):
@@ -200,21 +202,32 @@ class ExpertKnowledgeBase:
         FF.mkdir(self.BASE)
 
     def Reduce(self, text):
-        # Turn text into keywords
+        # Turn text into keywords for EKB lookup
         words = []
-        for w in text.lower().split():
-            w = ''.join(c for c in w if c.isalpha())
-            if not w or w in self.STOP:
+        if text is None:
+            return words
+        # Lowercase once and preserve word order
+        for w in str(text).lower().split():
+            # Split into alphabetic runs to handle hyphens and punctuation
+            parts = re.findall(r"[A-Za-z]+", w)
+            if not parts:
                 continue
-            if w.endswith('ies') and len(w) > 3:
-                w = w[:-3] + 'y'
-            elif w.endswith('ing') and len(w) > 3:
-                w = w[:-3]
-            elif w.endswith('s') and len(w) > 1:
-                w = w[:-1]
-            if w in self.REDUCE:
-                w = self.REDUCE[w]
-            words.append(w)
+            for p in parts:
+                if not p or p in self.STOP:
+                    continue
+                # Apply REDUCE mapping on the surface form so mappings like 'acquire' -> 'get' match
+                if hasattr(self, 'REDUCE') and p in self.REDUCE:
+                    mapped = self.REDUCE[p]
+                else:
+                    mapped = p
+                # Stem the mapped token (fall back to mapped token on error)
+                try:
+                    stemmed = SF.Stem(mapped)
+                except Exception:
+                    stemmed = mapped
+                if not stemmed or stemmed in self.STOP:
+                    continue
+                words.append(stemmed)
         return words
 
     def Search(self, text):
