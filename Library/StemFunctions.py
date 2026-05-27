@@ -220,13 +220,14 @@ _DERIVATIONAL_EXCEPTIONS = {
     'constitution', 'creation', 'december', 'description', 'election', 'election', 'emotion',
     'erection', 'eu', 'europe', 'facebook', 'fbi', 'february', 'florida', 'fraction',
     'friday', 'function', 'georgia', 'google', 'illinois', 'india', 'induction',
-    'infraction', 'infraction', 'interpretation', 'january', 'july', 'june', 'kingdom',
-    'legislation', 'london', 'madrid', 'march', 'may', 'microsoft', 'monday', 'narration',
-    'nasa', 'news', 'november', 'october', 'ohio', 'organization', 'paris', 'pennsylvania',
-    'perception', 'police', 'production', 'ration', 'reduction', 'regulation', 'relation',
-    'reputation', 'sanction', 'sanction', 'saturday', 'seduction', 'selection', 'september',
-    'sunday', 'texas', 'thursday', 'tokyo', 'translation', 'tuesday', 'twitter', 'usa',
-    'valediction', 'valuation', 'wednesday', }
+    'infraction', 'infraction', 'insecurity', 'interpretation', 'january', 'july', 'june',
+    'kingdom', 'legislation', 'london', 'madrid', 'march', 'may', 'microsoft', 'monday',
+    'narration', 'nasa', 'news', 'november', 'october', 'ohio', 'organization', 'paris',
+    'pennsylvania', 'perception', 'police', 'production', 'ration', 'reduction',
+    'regulation', 'relation', 'reputation', 'sanction', 'sanction', 'saturday', 'security',
+    'securities', 'seduction', 'selection', 'september', 'sunday', 'texas', 'thursday',
+    'tokyo', 'translation', 'tuesday', 'twitter', 'usa', 'valediction', 'valuation',
+    'wednesday', }
 
 # ---------------------------------------------------------------------------
 # HELPERS
