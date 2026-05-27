@@ -214,10 +214,19 @@ _KNOWN_E_ROOTS = {
 
 # Derivational exceptions: words we want to preserve (do not strip derivational suffixes)
 _DERIVATIONAL_EXCEPTIONS = {
-    'compunction', 'companion', 'infraction', 'news', 'sanction', 'emotion', 'election',
-    'erection', 'police', 'auction', 'seduction', 'production', 'valediction', 'conjunction',
-    'function', 'infraction', 'fraction', 'reduction', 'induction', 'attraction', 'ration',
-    'conflation', 'compunction', }
+    'administration', 'allocation', 'amazon', 'april', 'attraction', 'auction', 'august',
+    'beijing', 'berlin', 'california', 'canada', 'china', 'cia', 'communication',
+    'companion', 'compunction', 'conflation', 'conjunction', 'conjunction', 'connection',
+    'constitution', 'creation', 'december', 'description', 'election', 'election', 'emotion',
+    'erection', 'eu', 'europe', 'facebook', 'fbi', 'february', 'florida', 'fraction',
+    'friday', 'function', 'georgia', 'google', 'illinois', 'india', 'induction',
+    'infraction', 'infraction', 'interpretation', 'january', 'july', 'june', 'kingdom',
+    'legislation', 'london', 'madrid', 'march', 'may', 'microsoft', 'monday', 'narration',
+    'nasa', 'news', 'november', 'october', 'ohio', 'organization', 'paris', 'pennsylvania',
+    'perception', 'police', 'production', 'ration', 'reduction', 'regulation', 'relation',
+    'reputation', 'sanction', 'sanction', 'saturday', 'seduction', 'selection', 'september',
+    'sunday', 'texas', 'thursday', 'tokyo', 'translation', 'tuesday', 'twitter', 'usa',
+    'valediction', 'valuation', 'wednesday', }
 
 # ---------------------------------------------------------------------------
 # HELPERS
