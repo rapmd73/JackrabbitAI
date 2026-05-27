@@ -224,10 +224,10 @@ _DERIVATIONAL_EXCEPTIONS = {
     'kingdom', 'legislation', 'london', 'madrid', 'march', 'may', 'microsoft', 'monday',
     'narration', 'nasa', 'news', 'november', 'october', 'ohio', 'organization', 'paris',
     'pennsylvania', 'perception', 'police', 'production', 'ration', 'reduction',
-    'regulation', 'relation', 'reputation', 'sanction', 'sanction', 'saturday', 'security',
-    'securities', 'seduction', 'selection', 'september', 'sunday', 'texas', 'thursday',
-    'tokyo', 'translation', 'tuesday', 'twitter', 'usa', 'valediction', 'valuation',
-    'wednesday', }
+    'regulation', 'relation', 'reputation', 'sanction', 'sanction', 'saturday', 'section',
+    'security', 'securities', 'seduction', 'selection', 'september', 'sunday', 'texas',
+    'thursday', 'tokyo', 'translation', 'tuesday', 'twitter', 'usa', 'valediction',
+    'valuation', 'wednesday', }
 
 # ---------------------------------------------------------------------------
 # HELPERS
