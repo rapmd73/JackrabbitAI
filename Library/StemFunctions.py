@@ -218,18 +218,18 @@ _DERIVATIONAL_EXCEPTIONS = {
     'august', 'beijing', 'berlin', 'bias', 'california', 'canada', 'china',
     'cia', 'communication', 'companion', 'compunction', 'conflation',
     'conjunction', 'conjunction', 'connection', 'constitution', 'creation',
-    'december', 'description', 'election', 'election', 'emotion', 'erection',
-    'eu', 'europe', 'facebook', 'fbi', 'february', 'florida', 'fraction',
-    'friday', 'function', 'georgia', 'google', 'illinois', 'india', 'induction',
-    'infraction', 'infraction', 'insecurity', 'interpretation', 'january',
-    'july', 'june', 'kingdom', 'legislation', 'london', 'madrid', 'march',
-    'may', 'microsoft', 'monday', 'narration', 'nasa', 'news', 'november',
-    'october', 'ohio', 'organization', 'paris', 'pennsylvania', 'perception',
-    'police', 'production', 'ration', 'reduction', 'regulation', 'relation',
-    'reputation', 'sanction', 'sanction', 'saturday', 'section', 'security',
-    'securities', 'seduction', 'selection', 'september', 'sunday', 'texas',
-    'thursday', 'tokyo', 'translation', 'tuesday', 'twitter', 'usa',
-    'valediction', 'valuation', 'wednesday', }
+    'december', 'decide', 'decision', 'description', 'election', 'election',
+    'emotion', 'erection', 'eu', 'europe', 'facebook', 'fbi', 'february',
+    'florida', 'fraction', 'friday', 'function', 'georgia', 'google',
+    'illinois', 'india', 'induction', 'infraction', 'infraction', 'insecurity',
+    'interpretation', 'january', 'july', 'june', 'kingdom', 'legislation',
+    'london', 'madrid', 'march', 'may', 'microsoft', 'monday', 'narration',
+    'nasa', 'news', 'november', 'october', 'ohio', 'organization', 'paris',
+    'pennsylvania', 'perception', 'police', 'production', 'ration', 'reduction',
+    'regulation', 'relation', 'reputation', 'sanction', 'sanction', 'saturday',
+    'section', 'security', 'securities', 'seduction', 'selection', 'september',
+    'sunday', 'texas', 'thursday', 'tokyo', 'translation', 'tuesday', 'twitter',
+    'usa', 'valediction', 'valuation', 'wednesday', }
 
 # ---------------------------------------------------------------------------
 # HELPERS
