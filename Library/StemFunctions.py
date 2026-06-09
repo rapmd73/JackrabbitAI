@@ -1,6 +1,34 @@
 """
 StemFunctions.py — library for stemming any English word to its root form.
 
+All suffixes: ability, able, ably, ac, acean, aceous, acity, ad, ade, aemia,
+age, agog, agogue, aholic, al, algia, ality, ameen, amine, an, ana, ance, ancy,
+androus, andry, ane, ant, ar, arch, archy, ard, arian, arium, art, ary, ase,
+ate, athon, ation, ational, ationally, ative, atively, ator, atory, bound, cade,
+caine, campsis, capone, cardia, care, carnil, carp, carpic, carpous, cast,
+cation, cavir, cc, ccino, ce, ceive, ceiving, cel, cele, cene, centesis,
+centric, centrism, cephalic, cephalous, cephaly, cide, city, coele, cracy, crat,
+cratic, cratically, cule, cy, cycle, dom, dox, ece, ectasia, ectasis, ectomy,
+ed, ee, eer, emia, en, ence, ency, ene, ent, ential, entially, entment, er, ern,
+ery, es, escence, escent, ese, esque, ess, est, etic, etical, etically, ette,
+faction, fold, ful, fully, fulness, fy, gam, gamy, gate, gen, gene, genesis,
+genetic, genic, genous, gon, gonic, graph, grapher, graphic, graphical,
+graphically, graphy, gry, holic, hood, ial, ially, ian, iasis, iatric, iatry,
+ible, ibility, ibly, ic, ical, ically, ice, ics, ification, ify, ile, ility,
+ily, ine, ing, ingly, ion, ious, iously, iousness, ise, ish, ishly, ishness,
+ism, ist, istic, istically, ite, itis, ity, ive, ively, iveness, ix, izable,
+ization, izational, ize, izement, less, lessly, lessness, let, like, ling, log,
+loger, logist, logistic, logy, ly, mania, maniac, ment, mental, mentally,
+mentation, mer, monas, ness, nomy, oate, oic, oholic, oid, oidal, oidally,
+ologist, ology, oma, on, onym, opia, opsia, opsy, or, orium, ory, osis, osteum,
+ostomy, otomy, ous, ously, ousness, path, pathic, pathy, penia, phile, philia,
+philiac, phobe, phobia, phobic, phone, phonic, phony, phyll, phyte, plasia,
+plasm, plastic, plasty, plegia, plegic, pnea, rrhaphy, rrhea, rrhoea, s, scope,
+scopic, scopy, scribe, script, scription, sect, ship, sion, sional, sionally,
+some, somely, someness, sophic, sophy, ster, th, tion, tional, tionally, tome,
+tomy, trophy, tude, ty, ular, ularity, ularly, uous, uously, uousness, ure,
+ward, wards, ware, wise, y
+
 Usage:
     from StemFunctions import Stem
 
@@ -111,8 +139,7 @@ _IRREGULAR = {
     "swear": "swear", "swore": "swear", "sworn": "swear",
     "weave": "weave", "wove": "weave", "woven": "weave",
     "seek": "seek", "sought": "seek", "seeking": "seek",
-    "live": "live", "lived": "live", "lives": "live", "living": "live",
-}
+    "live": "live", "lived": "live", "lives": "live", "living": "live", }
 
 _IRREGULAR_PLURAL = {
     "children": "child", "men": "man", "women": "woman",
@@ -127,12 +154,13 @@ _IRREGULAR_PLURAL = {
     "loaves": "loaf", "scarves": "scarf", }
 
 _NOUN_ING = {
-    "thing", "something", "everything", "nothing", "morning", "evening", "ceiling",
-    "building", "king", "wing", "ring", "string", "spring", "swing", "ding", "ping", "being",
-    "going", "during", "darling", "according", "following", "interesting", "existing",
-    "corresponding", "outstanding", "charming", "amazing", "exciting", "surprising",
-    "concerning", "feeling", "meaning", "meeting", "painting", "reading", "clothing",
-    "engineering", "shopping", "wedding", }
+    "thing", "something", "everything", "nothing", "morning", "evening",
+    "ceiling", "building", "king", "wing", "ring", "string", "spring", "swing",
+    "ding", "ping", "being", "going", "during", "darling", "according",
+    "following", "interesting", "existing", "corresponding", "outstanding",
+    "charming", "amazing", "exciting", "surprising", "concerning", "feeling",
+    "meaning", "meeting", "painting", "reading", "clothing", "engineering",
+    "shopping", "wedding", }
 
 _NOUN_ED = {
     "bed", "red", "led", "bled", "bred", "creed", "deed", "greed", "seed", "weed", "bleed",
@@ -217,38 +245,38 @@ _DERIVATIONAL_EXCEPTIONS = {
     'administration', 'allocation', 'amazon', 'april', 'attraction', 'auction',
     'august', 'beijing', 'berlin', 'bias', 'california', 'canada', 'china',
     'cia', 'communication', 'companion', 'compunction', 'conflation',
-    'conjunction', 'conjunction', 'connection', 'constitution', 'creation',
+    'conjunction', 'conjunction', 'constitution',
     'december', 'decide', 'decision', 'description', 'election', 'election',
     'emotion', 'erection', 'eu', 'europe', 'facebook', 'fbi', 'february',
     'florida', 'fraction', 'friday', 'function', 'georgia', 'google',
     'illinois', 'india', 'induction', 'infraction', 'infraction', 'insecurity',
     'interpretation', 'january', 'july', 'june', 'kingdom', 'legislation',
     'london', 'madrid', 'march', 'may', 'microsoft', 'monday', 'narration',
-    'nasa', 'news', 'november', 'october', 'ohio', 'organization', 'paris',
+    'nasa', 'news', 'november', 'october', 'ohio', 'paris',
     'pennsylvania', 'perception', 'police', 'production', 'ration', 'reduction',
     'regulation', 'relation', 'reputation', 'sanction', 'sanction', 'saturday',
     'section', 'security', 'securities', 'seduction', 'selection', 'september',
     'sunday', 'texas', 'thursday', 'tokyo', 'translation', 'tuesday', 'twitter',
-    'usa', 'valediction', 'valuation', 'wednesday', }
-
+    'usa', 'valediction', 'valuation', 'wednesday',
+}
 # ---------------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------------
 
-def _has_vowel(s: str) -> bool:
+def _has_vowel(s):
     return any(c in _VOWELS or (c == 'y' and i > 0) for i, c in enumerate(s))
 
 
-def _double_consonant(s: str) -> bool:
+def _double_consonant(s):
     return len(s) >= 2 and s[-1] == s[-2] and s[-1] not in _VOWELS
 
 
-def _ends_le(s: str) -> bool:
+def _ends_le(s):
     """True if s ends with a consonant + 'l' pattern from -le words (handle -> handling)."""
     return len(s) >= 3 and s[-1] == 'l' and s[-2] not in _VOWELS and s[-2] != 'y'
 
 
-def _needs_e_vowel_before(s: str) -> bool:
+def _needs_e_vowel_before(s):
     """True if *s* looks like a root whose dict form ends in silent 'e',
     and the last two chars are VOWEL-CONSONANT."""
     if len(s) < 2:
@@ -274,7 +302,7 @@ def _needs_e_vowel_before(s: str) -> bool:
     return False
 
 
-def _inline_al_cascade(s: str) -> str:
+def _inline_al_cascade(s):
     """If *s* ends in -al with an 'ic' or 'ion' base, cascade the -al removal.
     Used inside -ism/-ist/-ize/-ity handlers for stacked suffix support."""
     if s.endswith("al") and len(s) > 5:
@@ -288,7 +316,7 @@ def _inline_al_cascade(s: str) -> str:
 # STEP FUNCTIONS
 # ---------------------------------------------------------------------------
 
-def _plural(w: str) -> str:
+def _plural(w):
     if not w.endswith("s") or w.endswith("ss"):
         return w
     if len(w) < 4:
@@ -321,7 +349,7 @@ def _plural(w: str) -> str:
     return w
 
 
-def _ing(w: str) -> str:
+def _ing(w):
     if not w.endswith("ing") or len(w) < 5 or w in _NOUN_ING:
         return w
     base = w[:-3]
@@ -346,10 +374,12 @@ def _ing(w: str) -> str:
         return base + "e"
     if _needs_e_vowel_before(base):
         return base + "e"
+    if len(base)>2 and base[-1] not in _VOWELS and base[-2] in _VOWELS:
+        return base + "e"
     return base
 
 
-def _ed(w: str) -> str:
+def _ed(w):
     if not w.endswith("ed") or len(w) < 4 or w in _NOUN_ED or w in _IRREGULAR:
         return w
     # "ee" + d pattern: agreed -> agree, freed -> free
@@ -373,8 +403,6 @@ def _ed(w: str) -> str:
         return base[:-1]
     if len(base) == 2 and base[-1] not in _VOWELS and base[-2] in _VOWELS:
         return base + "e"
-
-        return base + "e"
     if base.endswith('u') and len(base) >= 3:
         return base + "e"
     if _needs_e_vowel_before(base):
@@ -382,7 +410,7 @@ def _ed(w: str) -> str:
     return base
 
 
-def _er_est(w: str) -> str:
+def _er_est(w):
     if w in _SAFE_ER:
         return w
     if w.endswith("est") and len(w) > 5:
@@ -415,7 +443,7 @@ def _er_est(w: str) -> str:
     return w
 
 
-def _ly(w: str) -> str:
+def _ly(w):
     if not w.endswith("ly") or len(w) < 5 or w in _SAFE_LY:
         return w
     if w.endswith("ably"):
@@ -432,7 +460,7 @@ def _ly(w: str) -> str:
     return w
 
 
-def _derivational(w: str) -> str:
+def _derivational(w):
     """One pass of derivational suffix removal. Returns the stem or original."""
     # Exceptions: do not strip derivational suffixes for these lemmas
     if w in _DERIVATIONAL_EXCEPTIONS:
@@ -637,7 +665,7 @@ def _derivational(w: str) -> str:
 # PUBLIC API
 # ---------------------------------------------------------------------------
 
-def Stem(word: str) -> str:
+def Stem(word):
     """Return the English stem of *word* — a real-looking root form."""
     w = word.lower().strip()
     if len(w) <= 2 or not w.isalpha():
@@ -662,7 +690,7 @@ def Stem(word: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def StemCompound(word: str) -> str:
+def StemCompound(word):
     """Stem each alphabetic component of a compound word, preserving separators.
     Examples:
       - "well-being" -> "well-be"

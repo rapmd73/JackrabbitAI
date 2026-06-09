@@ -52,7 +52,7 @@ import FileFunctions as FF
 current_time=time.time()  # Get the current time in seconds
 
 @DF.function_trapper
-def DeleteOldFiles(directory,threshold=31*24*60*60):
+def DeleteOldFiles(directory,threshold=31*24*60*60,override=False):
     if not os.path.isdir(directory):
         return 0
 
@@ -61,7 +61,7 @@ def DeleteOldFiles(directory,threshold=31*24*60*60):
     # Loop through all files in the folder
     for filename in os.listdir(directory):
         # Ignore DOT files
-        if filename.startswith('.'):
+        if not override and filename.startswith('.'):
             continue
 
         file_path = os.path.join(directory, filename)
@@ -124,7 +124,7 @@ def main():
                 break
         if skip:
             continue
-        c=DeleteOldFiles(d,threshold=threshold)
+        c=DeleteOldFiles(d,threshold=threshold,override=Override)
         if c>0 or Verbose:
             print(f"{c:5} {d}")
 
@@ -134,4 +134,3 @@ if __name__=='__main__':
 ###
 ### END Program
 ###
-
