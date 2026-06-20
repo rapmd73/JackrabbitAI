@@ -76,6 +76,7 @@ import pdfplumber
 import youtube_transcript_api
 import scrapingant_client as Ant
 import logging
+from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 
