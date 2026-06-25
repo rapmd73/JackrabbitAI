@@ -23,7 +23,7 @@
 # or structured commentary. By separating the instructions from the
 # data, the program allows the same AI agent to generate consistent
 # outputs across a wide variety of files simply by changing the role
-# file, without modifying the program itself.
+# file, without modifying the program itself. This MUST bt a FULL path
 
 # The program uses the JackrabbitAI library for file handling, AI
 # interaction, and Unicode decoding, ensuring all file operations are
@@ -53,7 +53,7 @@ def main():
     maxresp=0
 
     if len(sys.argv) < 3:
-        print("Role (instructions) file and directory must be supplied.")
+        print("Role (instructions) (full path) file and directory must be supplied.")
         sys.exit(0)
 
     engine=os.getenv('JRAIengine')

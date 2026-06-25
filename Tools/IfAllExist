@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+if __name__ == '__main__':
+    sys.exit(0 if all(os.path.exists(f) for f in sys.argv[1:]) else 1)

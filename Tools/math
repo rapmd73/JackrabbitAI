@@ -13,7 +13,7 @@ def tokenize(expr):
         if expr[pos].isspace():
             pos += 1
             continue
-        
+
         # Match numbers (integers and decimals)
         if expr[pos].isdigit() or (expr[pos] == '.' and pos + 1 < len(expr) and expr[pos+1].isdigit()):
             match = re.match(r'\d*\.?\d+', expr[pos:])
@@ -22,15 +22,15 @@ def tokenize(expr):
             tokens.append(match.group())
             pos += match.end()
             continue
-        
+
         # Match operators and parentheses
         if expr[pos] in '+-*/()':
             tokens.append(expr[pos])
             pos += 1
             continue
-        
+
         raise ValueError(f"Unexpected character: {expr[pos]}")
-    
+
     return tokens
 
 def shunting_yard(tokens):
@@ -38,13 +38,13 @@ def shunting_yard(tokens):
     precedence = {'*': 2, '/': 2, '+': 1, '-': 1}
     output = []
     stack = []
-    
+
     for token in tokens:
         # Numbers go directly to output
         if re.match(r'\d*\.?\d+', token):
             output.append(token)
             continue
-        
+
         # Handle parentheses
         if token == '(':
             stack.append(token)
@@ -55,24 +55,24 @@ def shunting_yard(tokens):
             if not stack or stack.pop() != '(':
                 raise ValueError("Mismatched parentheses")
             continue
-        
+
         # Handle operators
         if token in precedence:
-            while (stack and stack[-1] != '(' and 
+            while (stack and stack[-1] != '(' and
                    stack[-1] in precedence and
                    precedence[stack[-1]] >= precedence[token]):
                 output.append(stack.pop())
             stack.append(token)
             continue
-        
+
         raise ValueError(f"Invalid token: {token}")
-    
+
     # Pop remaining operators to output
     while stack:
         if stack[-1] == '(':
             raise ValueError("Mismatched parentheses")
         output.append(stack.pop())
-    
+
     return output
 
 def evaluate_postfix(tokens):
@@ -84,18 +84,18 @@ def evaluate_postfix(tokens):
                 raise ValueError("Insufficient operands")
             b = float(stack.pop())
             a = float(stack.pop())
-            
+
             if token == '+': result = a + b
             elif token == '-': result = a - b
             elif token == '*': result = a * b
-            elif token == '/': 
+            elif token == '/':
                 if abs(b) < 1e-9:
                     raise ZeroDivisionError("Division by zero")
                 result = a / b
             stack.append(result)
         else:
             stack.append(float(token))
-    
+
     if len(stack) != 1:
         raise ValueError("Invalid expression")
     return stack[0]
@@ -117,18 +117,18 @@ def main():
     if len(sys.argv) > 1:
         expr = " ".join(sys.argv[1:])
         try:
-            result = calculate(expr)
+            result = calculate(expr.replace('x','*'))
             print(format_result(result))
             sys.exit(0)
         except Exception as e:
             print(f"Error: {str(e)}", file=sys.stderr)
             sys.exit(1)
-    
+
     # Interactive mode
     print("Advanced Calculator - Type 'exit' to quit")
     print("Supports: + - * / ( ) and order of operations")
     print("Example: 3 + 4 * (2 - 1)")
-    
+
     while True:
         try:
             expr = input("\n> ").strip().lower()
@@ -137,10 +137,10 @@ def main():
                 break
             if not expr:
                 continue
-                
+
             result = calculate(expr)
             print(f"= {format_result(result)}")
-            
+
         except Exception as e:
             print(f"Error: {str(e)}")
 
