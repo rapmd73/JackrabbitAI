@@ -395,6 +395,13 @@ def Reclaimation(o):
         except Exception as err:
             # json library hates sockets... Still fix the hash table
             return list(o)
+    if isinstance(o,o.__class__):
+        try:
+            nobj=copy.deepcopy(o)
+            o.__dict__.clear()
+            return nobj
+        except Exception as err:
+            return o
     if isinstance(o,set):
         if not o:
             return set()
