@@ -236,6 +236,23 @@ def ScrapingAnt(url,userhome=None):
         return None
     return result.content
 
+# Use Jina.AI to get webpage
+
+def JinaAI(url, ua=None):
+    # Set the user agent
+    userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    if ua!=None and ua.strip()!='':
+        userAgent=ua
+
+    headers = {
+        "X-Retain-Images": "none",
+        "X-Return-Format": "html",
+        "X-User-Agent": userAgent }
+
+    response = requests.get(url, headers=headers)
+
+    return response.text
+
 # The `StripHTML` function takes an HTML string (`htmlbuf`) as input and
 # removes various HTML elements to extract the plain text content. It first
 # removes the entire `<head>` section, followed by `<script>` and `<style>`
@@ -315,7 +332,7 @@ def StripHTML(htmlbuf):
 # or unsupported formats.
 
 @DF.function_trapper(None)
-def html2text(url,external=False,userhome=None,raw=False, ua=None):
+def html2text(url,external=False,userhome=None,raw=False, ua=None,useJina=False):
     # Set the user agent
     userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     if ua!=None and ua.strip()!='':
@@ -332,7 +349,10 @@ def html2text(url,external=False,userhome=None,raw=False, ua=None):
 
     html=None
     if external==True:
-        html=ScrapingAnt(url,userhome=userhome)
+        if useJina:
+            html=JinaAI(url,ua)
+        else:
+            html=ScrapingAnt(url,userhome=userhome)
     else:
         try:
             # If this breaks, run: playwright install
@@ -481,3 +501,8 @@ def CheckAbuseIPDB(domain,userhome=None):
     except requests.exceptions.RequestException as e:
         print(f"Error checking AbuseIPDB: {e}")
         return None, 0
+
+###
+### End Library
+###
+

@@ -28,6 +28,7 @@ import WebFunctions as WF
 
 raw=False
 external=False
+jina=False
 
 if len(sys.argv)>2:
     if '-raw' in sys.argv:
@@ -36,9 +37,12 @@ if len(sys.argv)>2:
     if '-external' in sys.argv:
         sys.argv.remove('-external')
         external=True
+    if '-jina' in sys.argv:
+        sys.argv.remove('-jina')
+        jina=True
 
 if len(sys.argv)<2:
     print("Please verify URL...")
     sys.exit(1)
 
-print(WF.html2text(sys.argv[1],raw=raw,external=external))
+print(WF.html2text(sys.argv[1],raw=raw,external=external,useJina=jina))
