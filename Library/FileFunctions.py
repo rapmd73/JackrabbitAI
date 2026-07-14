@@ -108,9 +108,12 @@ def ReadFile(fn,binary=False):
 # files or create new ones if they do not already exist.
 
 @DF.function_trapper(None)
-def AppendFile(fname,text):
+def AppendFile(fname,text,sync=False):
     fh=open(fname,'a+')
     fh.write(text)
+    if sync:
+        fh.flush()
+        os.fsync(fh.fileno())
     fh.close()
 
 # The `WriteFile` function is a simple utility that writes data to a specified
@@ -123,10 +126,13 @@ def AppendFile(fname,text):
 # operation.
 
 @DF.function_trapper(None)
-def WriteFile(fn,data):
-    cf=open(fn,'w')
-    cf.write(data)
-    cf.close()
+def WriteFile(fn,data,sync=False):
+    fh=open(fn,'w')
+    fh.write(data)
+    if sync:
+        fh.flush()
+        os.fsync(fh.fileno())
+    fh.close()
 
 # The `ReadFile2List` function reads a file specified by the `fname` parameter
 # and returns its contents as a list of strings. If the file does not exist,
