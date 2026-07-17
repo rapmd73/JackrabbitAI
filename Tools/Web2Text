@@ -26,9 +26,9 @@ import os
 import FileFunctions as FF
 import WebFunctions as WF
 
+scraper='JinaAI'
 raw=False
 external=False
-jina=False
 
 if len(sys.argv)>2:
     if '-raw' in sys.argv:
@@ -39,10 +39,16 @@ if len(sys.argv)>2:
         external=True
     if '-jina' in sys.argv:
         sys.argv.remove('-jina')
-        jina=True
+        scraper='JinaAI'
+    if '-ant' in sys.argv:
+        sys.argv.remove('-ant')
+        scraper='Ant'
+    if '-fc' in sys.argv:
+        sys.argv.remove('-fc')
+        scraper='FireCrawl'
 
 if len(sys.argv)<2:
     print("Please verify URL...")
     sys.exit(1)
 
-print(WF.html2text(sys.argv[1],raw=raw,external=external,useJina=jina))
+print(WF.html2text(sys.argv[1],raw=raw,external=external,useScrape=scraper))

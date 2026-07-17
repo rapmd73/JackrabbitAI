@@ -5,6 +5,8 @@
 # 2021-2025 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
 
+# pip install firecrawl-py
+
 # This Python code is a comprehensive toolkit designed to extract, process, and
 # analyze text content from various sources, including web pages, YouTube
 # videos, PDFs, and more. It also includes functionality to check the safety of
@@ -15,46 +17,6 @@
 # managing YouTube transcripts. It also imports custom modules like
 # `DecoratorFunctions`, `CoreFunctions`, and `FileFunctions`, which likely
 # contain utility functions used throughout the script.
-
-# One of the key functions, `DecodeHashCodes`, is responsible for decoding
-# numeric character references (e.g., `&#65;`) in a string and replacing them
-# with their corresponding characters. This is useful for handling HTML
-# entities and ensuring text is properly formatted.
-
-# The `yttags2text` function extracts tags from a YouTube video by analyzing
-# its URL, fetching video details using the YouTube API, and returning the tags
-# as a list. If the video cannot be found or has no tags, it returns a
-# placeholder message.
-
-# `youtube2text` is another YouTube-related function that extracts and returns
-# the transcript of a YouTube video. It handles potential errors by retrying
-# the transcript fetch a specified number of times.
-
-# For PDF files, the `PDF2Text` function processes a PDF buffer, extracts text
-# from all pages, and returns it as a single string prefixed with "PDF
-# Content:".
-
-# The `ScrapingAnt` function uses the ScrapingAnt API to scrape content from a
-# specified URL. It reads API tokens, creates a ScrapingAnt client, and returns
-# the content of the response. If an error occurs, it returns `None`.
-
-# `StripHTML` is a utility function that takes an HTML string, removes various
-# HTML elements like `<head>`, `<script>`, and `<style>`, and extracts plain
-# text. It also removes extra whitespace and trims the text for a clean output.
-
-# The `html2text` function is a versatile tool that extracts text content from
-# a given URL. It handles different types of content, including YouTube
-# transcripts, PDFs, and standard web pages. Depending on the input, it uses
-# internal browser instances or external scraping services to fetch content. It
-# also offers customization options like `internal`, `external`, `userhome`,
-# and `raw` to tailor its behavior.
-
-# The script then introduces a set of functions related to identifying
-# potentially harmful links. `ExtractURLs` finds all URLs in a given text using
-# a regular expression. `Domain2IP` resolves a domain name to its IP address.
-# `ExtractDomains` extracts the domain from a URL. `CheckAbuseIPDB` checks if a
-# domain's IP address is reported as abusive on AbuseIPDB, a database of known
-# abusive IPs.
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
@@ -75,6 +37,7 @@ import requests
 import pdfplumber
 import youtube_transcript_api
 import scrapingant_client as Ant
+import firecrawl
 import logging
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
@@ -238,6 +201,7 @@ def ScrapingAnt(url,userhome=None):
 
 # Use Jina.AI to get webpage
 
+@DF.function_trapper(None)
 def JinaAI(url, ua=None):
     # Set the user agent
     userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -252,6 +216,20 @@ def JinaAI(url, ua=None):
     response = requests.get(url, headers=headers)
 
     return response.text
+
+# FireCrawl
+
+@DF.function_trapper(None)
+def FireCrawl(url,userhome=None):
+    # Read Tokens
+    Tokens=FF.ReadTokens(userhome=userhome)
+
+    try:
+        app = firecrawl.Firecrawl(api_key=Tokens["FireCrawl"])
+        result=app.scrape(url,formats=["rawHtml"])
+    except Exception as err:
+        return None
+    return result.raw_html
 
 # The `StripHTML` function takes an HTML string (`htmlbuf`) as input and
 # removes various HTML elements to extract the plain text content. It first
@@ -331,8 +309,10 @@ def StripHTML(htmlbuf):
 # cannot be completed successfully due to external factors like network errors
 # or unsupported formats.
 
+# Ant=ScrapingAnt,JinaAI,FireCrawl
+
 @DF.function_trapper(None)
-def html2text(url,external=False,userhome=None,raw=False, ua=None,useJina=False):
+def html2text(url,external=False,userhome=None,raw=False, ua=None,useScrape="JinaAI"):
     # Set the user agent
     userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     if ua!=None and ua.strip()!='':
@@ -349,9 +329,11 @@ def html2text(url,external=False,userhome=None,raw=False, ua=None,useJina=False)
 
     html=None
     if external==True:
-        if useJina:
+        if useScrape=="JinaAI":
             html=JinaAI(url,ua)
-        else:
+        elif useScrape=="FireCrawl":
+            html=FireCrawl(url,userhome=userhome)
+        elif useScrape=="Ant":
             html=ScrapingAnt(url,userhome=userhome)
     else:
         try:
