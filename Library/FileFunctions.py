@@ -11,36 +11,6 @@
 # handling file paths, managing directories, reading and writing files, and
 # processing data.
 
-# The first set of functions focuses on directory and file management. The
-# `mkdir` function ensures a directory exists at a specified path, creating it
-# if necessary. This is useful for preparing storage locations before writing
-# files. The `ReadFile` function reads the contents of a file, offering the
-# flexibility to handle both text and binary files. It checks if the file
-# exists and returns its content, or `None` if the file is not found. This
-# function is particularly handy for loading data from files while gracefully
-# handling potential errors.
-
-# The `AppendFile` and `WriteFile` functions are straightforward tools for
-# adding content to existing files or creating new ones. `AppendFile` adds text
-# to the end of a file, ensuring that previous content remains intact, while
-# `WriteFile` overwrites the file with new data. These functions are essential
-# for logging, data storage, or any scenario requiring file updates.
-
-# The `ReadFile2List` function takes file reading a step further by converting
-# the file's content into a list of strings, with options to manipulate the
-# text. It can remove empty lines, convert text to lowercase or uppercase, and
-# handle non-existent files gracefully. This function is ideal for processing
-# structured text data stored in files.
-
-# Lastly, the `ReadTokens` function is specialized for reading and processing
-# configuration files in JSON format, typically used for storing tokens or
-# settings. It locates the token file based on provided parameters or defaults,
-# reads its content, and parses it into a dictionary. The function also
-# intelligently replaces token values with environment variables if specified,
-# ensuring dynamic configuration. If the token file is missing or malformed,
-# the function provides clear error messages and exits the program to prevent
-# unexpected behavior.
-
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import os
@@ -88,13 +58,13 @@ def mkdir(fn):
 def ReadFile(fn,binary=False):
     if os.path.exists(fn):
         if binary:
-            cf=open(fn,'rb')
-            buffer=cf.read()
-            cf.close()
+            fh=open(fn,'rb')
+            buffer=fh.read()
+            fh.close()
         else:
-            cf=open(fn,'r')
-            buffer=cf.read().strip()
-            cf.close()
+            fh=open(fn,'r')
+            buffer=fh.read().strip()
+            fh.close()
     else:
         buffer=None
     return buffer
@@ -133,6 +103,19 @@ def WriteFile(fn,data,sync=False):
         fh.flush()
         os.fsync(fh.fileno())
     fh.close()
+
+# This function returns the size of the file.
+
+@DF.function_trapper(None)
+def GetFileSize(fn):
+    if not os.path.exists(fn):
+        return 0
+
+    fh=open(fn,'rb')
+    fh.seek(0,os.SEEK_END)
+    size=fh.tell()
+    fh.close()
+    return size
 
 # The `ReadFile2List` function reads a file specified by the `fname` parameter
 # and returns its contents as a list of strings. If the file does not exist,
@@ -179,6 +162,18 @@ def ReadFile2List(fname,Unique=True,Delimiter="\n",ForceLower=False,ForceUpper=F
         responses=res
 
     return responses
+
+@DF.function_trapper(None)
+def WriteList2File(fname, data, delimiter="\n", sync=False):
+    # Validate input
+    if not isinstance(data, list):
+        raise TypeError("data parameter must be a list")
+
+    # Join with delimiter
+    content = delimiter.join(data)
+
+    # Write to file using existing WriteFile pattern with sync support
+    WriteFile(fname,content,sync)
 
 # The `ReadTokens` function reads and processes token files in JSON format,
 # returning a dictionary of tokens. It takes two optional parameters, `gid` and

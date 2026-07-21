@@ -57,6 +57,7 @@
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import os
+import secrets
 import io
 import copy
 import itertools
@@ -421,3 +422,12 @@ def SetRunningName(rn):
     global RunningName
 
     RunningName=rn
+
+# Generate an ID String
+
+def GetID(s=37,e=73):
+    random.seed(time.time())
+    l=e
+    if s!=e:
+        l=random.randrange(min(s,e),max(s,e))
+    return secrets.token_urlsafe(l)
