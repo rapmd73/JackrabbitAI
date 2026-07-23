@@ -41,6 +41,12 @@ class JackrabbitDB:
     # the indexes to prevent duplicates.
 
     def Add(self,record):
+        # Check indexes
+        self.CheckIndexes()
+        if self.Error:
+            raise(f"Index stability check failed: {err}")
+
+        # Check for a duplicate
         self.CheckDuplicates(record)
         # We have an error
         if self.Error:
@@ -70,30 +76,26 @@ class JackrabbitDB:
 
     def UpdateSingleIndex(self,idx,ptr,record):
         kvtbl={}
-        fidx=self.dbIndex[idx]
+        fidx=self.dbIndex[idx].replace("|",".")
         if not os.path.exists(fidx):
             # Add new or overwrite old
-            kvtbl={ "Key":record[idx], "Offset":ptr }
+            if "|" in idx:
+                val="|".join(str(record[k]) for k in idx.split('|'))
+                kvtbl={ "Key":val, "Offset":ptr }
+            else:
+                kvtbl={ "Key":record[idx], "Offset":ptr }
             entries=[ json.dumps(kvtbl) ]
             FF.WriteList2File(fidx,entries,sync=True)
             return
 
-        # Read the actual index into a list
         entries=FF.ReadFile2List(fidx)
         kvtbl={}
-        for line in entries:
-            try:
-                kvtbl=json.loads(line)
-            except Exception as err:
-                print(err)
-                continue
-            # Duplicate
-            if record[idx]==kvtbl['Key']:
-                self.Error="Duplicate"
-                return
-
         # Add new or overwrite old
-        kvtbl={ "Key":record[idx], "Offset":ptr }
+        if "|" in idx:
+            val="|".join(str(record[k]) for k in idx.split('|'))
+            kvtbl={ "Key":val, "Offset":ptr }
+        else:
+            kvtbl={ "Key":record[idx], "Offset":ptr }
         entries.append(json.dumps(kvtbl))
         entries=self.SortIndex(entries)
         FF.WriteList2File(fidx,entries,sync=True)
@@ -107,21 +109,118 @@ class JackrabbitDB:
         dup=False
         # We need to walk every index file
         for idx in self.dbIndex.keys():
-            self.IndexCheckDuplicate(idx,record)
-            # something went wrong
-            if self.Error:
-                return
+            fidx=self.dbIndex[idx].replace("|",".")
+            if os.path.exists(fidx):
+                result=self.BinaryIndexSearch(idx,record)
+                # We have a duplicate
+                if result is not None:
+                    self.Error="Duplicate"
+                    return
 
-    def IndexCheckDuplicate(self,idx,record):
-        fidx=self.dbIndex[idx]
-        if os.path.exists(fidx):
-            # Read the actual index into a list
-            entries=FF.ReadFile2List(fidx)
-            # Key is the index key from the record, ie "File"
-            # Offset is the seek offetset into the main database.
-            # Index: { "Key":"/bin/bash", "Offset":"123" }
-            for line in entries:
+    # Check Index age and force a rebuild if needed
+
+    def CheckIndexes(self):
+        # No DB, nothing to check.
+        if not os.path.exists(self.dbName):
+            return
+
+        # Check the indexes
+        self.Error=None
+        dbMtime=os.path.getmtime(self.dbName)
+        # We need to walk every index file
+        for idx in self.dbIndex.keys():
+            fidx=self.dbIndex[idx].replace("|",".")
+            if os.path.exists(fidx):
+                iMtime=os.path.getmtime(fidx)
+                if iMtime<dbMtime:
+                    self.RebuildIndex(idx)
+            else:
+                self.RebuildIndex(idx)
+
+    def RebuildIndex(self,idx):
+        # No DB, nothing to check.
+        if not os.path.exists(self.dbName):
+            return
+
+        # Force rebuild
+        self.Error=None
+        entries=[]
+        ptr=0
+        fh=open(self.dbName,"rb")
+        while True:
+            bline=fh.readline()
+            if not bline:
+                break
+
+            record=json.loads(bline)
+            kvtbl={}
+            # Add new or overwrite old
+            if "|" in idx:
+                val="|".join(str(record[k]) for k in idx.split('|'))
+                kvtbl={ "Key":val, "Offset":ptr }
+            else:
+                kvtbl={ "Key":record[idx], "Offset":ptr }
+            entries.append(json.dumps(kvtbl))
+            ptr+=len(bline)
+        fh.close()
+
+        entries=self.SortIndex(entries)
+        fidx=self.dbIndex[idx].replace("|",".")
+        FF.WriteList2File(fidx,entries,sync=True)
+
+    # Linear (brute force) search
+
+    def LinearIndexSearch(self,idx,record):
+        # Index: { "Key":"/bin/bash", "Offset":"123" }
+        # Read the actual index into a list
+        # Linear search
+        fidx=self.dbIndex[idx].replace("|",".")
+        entries=FF.ReadFile2List(fidx)
+        kvtbl={}
+        for line in entries:
+            try:
                 kvtbl=json.loads(line)
+            except Exception as err:
+                print(err)
+                continue
+            # Duplicate
+            if "|" in idx:
+                val="|".join(str(record[k]) for k in idx.split('|'))
+                if val==kvtbl['Key']:
+                    self.Error="Duplicate"
+                    return kvtbl['Offset']
+            elif record[idx]==kvtbl['Key']:
+                self.Error="Duplicate"
+                return kvtbl['Offset']
+        return None
+
+    # Binary search.  Really nice is index is already sorted.
+
+    def BinaryIndexSearch(self, idx, record):
+        fidx = self.dbIndex[idx].replace("|", ".")
+        entries = FF.ReadFile2List(fidx)
+        if not entries:
+            return
+
+        # Build search key
+        if "|" in idx:
+            target = "|".join(str(record[k]) for k in idx.split("|"))
+        else:
+            target = str(record[idx])
+
+        # Binary search on entries list (already sorted by Key)
+        lo, hi = 0, len(entries) - 1
+        while lo<=hi:
+            mid=(lo+hi)//2
+            kvtbl=json.loads(entries[mid])
+            key=kvtbl["Key"]
+            if key==target:
+                return kvtbl['Offset']
+            elif key<target:
+                lo=mid+1
+            else:
+                hi=mid-1
+        return None
 
 ###
 ### End library
@@ -131,12 +230,13 @@ class JackrabbitDB:
 
 def TestDB():
     dir="/bin"
-    db=JackrabbitDB("/tmp/FilesDB",idx=["File"])
+    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File","LastAccessed|File"])
     for file in os.listdir(dir):
         nr={}
         nr['ID']=CF.GetID(31,31)
         nr['File']=os.path.abspath(f"{dir}/{file}")
         nr['RealFile']=os.path.realpath(f"{dir}/{file}")
+        nr['LastAccessed']=os.path.getatime(f"{dir}/{file}")
         if os.path.isdir(nr['File']):
             nr['Type']='Directory'
         elif os.path.isfile(nr['File']):
@@ -147,6 +247,8 @@ def TestDB():
             nr['Type']='Special'
         nr['Added']=time.time()
         db.Add(nr)
+        if db.Error:
+            print(f"{db.Error} {nr['File']}")
 
 if __name__=="__main__":
     TestDB()
