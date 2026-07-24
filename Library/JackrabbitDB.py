@@ -19,11 +19,13 @@ import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
 
-# primary = (time.time()*10000000).GetID()
+# primary=(time.time()*10000000).GetID()
 
 class JackrabbitDB:
-    def __init__(self,name,idx=[]):
+    def __init__(self,name,idx=[],syncDB=True,syncIDX=False):
         # Main database
+        self.syncDB=syncDB
+        self.syncIDX=syncIDX
         self.dbDir=name
         self.dbName=f"{self.dbDir}/Data.JDB"
 
@@ -41,30 +43,34 @@ class JackrabbitDB:
     # the indexes to prevent duplicates.
 
     def Add(self,record):
-        # Check indexes
         self.CheckIndexes()
         if self.Error:
-            raise(f"Index stability check failed: {err}")
-
-        # Check for a duplicate
+            raise Exception(f"Index stability check failed: {self.Error}")
         self.CheckDuplicates(record)
-        # We have an error
         if self.Error:
-            return
-
-        # This becomes the seek point to the NEXT record. Files are kept
-        # CLOSED as much as possible to prevent file corruption. ONLY
-        # open when ABSOLUTELY neccessary. Penalty is higher latency, but
-        # mitigated by SSD.
+            return None, None
 
         ptr=FF.GetFileSize(self.dbName)
-
-        # Write the actual record.
         r=json.dumps(record)+'\n'
-        FF.AppendFile(self.dbName,r,sync=True)
-
-        # Update all indexes
+        FF.AppendFile(self.dbName,r,sync=self.syncDB)
         self.UpdateIndexes(ptr,record)
+        return ptr,record
+
+    def Read(self,offset):
+        fh=open(self.dbName,"rb")
+        fh.seek(offset,os.SEEK_SET)
+        line=fh.readline()
+        fh.close()
+        try:
+            line=json.loads(line)
+        except Exception as err:
+            self.Error=err
+            return None
+        return line
+
+    # Update: upsert. If record exists (by index keys), do nothing. Else Add.
+    def Update(self,record):
+        return self.Add(record)
 
     # Actually update ALL index files.
 
@@ -85,10 +91,10 @@ class JackrabbitDB:
             else:
                 kvtbl={ "Key":record[idx], "Offset":ptr }
             entries=[ json.dumps(kvtbl) ]
-            FF.WriteList2File(fidx,entries,sync=True)
+            FF.WriteList2File(fidx,entries,sync=self.syncIDX)
             return
 
-        entries=FF.ReadFile2List(fidx)
+        entries=FF.ReadFile2List(fidx,Unique=False)
         kvtbl={}
         # Add new or overwrite old
         if "|" in idx:
@@ -98,7 +104,7 @@ class JackrabbitDB:
             kvtbl={ "Key":record[idx], "Offset":ptr }
         entries.append(json.dumps(kvtbl))
         entries=self.SortIndex(entries)
-        FF.WriteList2File(fidx,entries,sync=True)
+        FF.WriteList2File(fidx,entries,sync=self.syncIDX)
 
     def SortIndex(self,entries):
         ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
@@ -116,6 +122,30 @@ class JackrabbitDB:
                 if result is not None:
                     self.Error="Duplicate"
                     return
+
+    # Blind search for a string in all indexes
+
+    def SearchContains(self,srch):
+        self.Error=None
+        results=[]
+        # We need to walk every index file
+        for idx in self.dbIndex.keys():
+            fidx=self.dbIndex[idx].replace("|",".")
+            if os.path.exists(fidx):
+                entries=FF.ReadFile2List(fidx,Unique=False)
+                for line in entries:
+                    try:
+                        kvtbl=json.loads(line)
+                    except Exception as err:
+                        continue
+                    # If srch string found, add to results list
+                    if srch in kvtbl['Key'] and kvtbl['Key'] not in results:
+                        kvtbl['SearchIndex']=idx
+                        results.append(kvtbl)
+
+        if results==[]:
+            return None
+        return results
 
     # Check Index age and force a rebuild if needed
 
@@ -166,7 +196,7 @@ class JackrabbitDB:
 
         entries=self.SortIndex(entries)
         fidx=self.dbIndex[idx].replace("|",".")
-        FF.WriteList2File(fidx,entries,sync=True)
+        FF.WriteList2File(fidx,entries,sync=self.syncIDX)
 
     # Linear (brute force) search
 
@@ -175,7 +205,7 @@ class JackrabbitDB:
         # Read the actual index into a list
         # Linear search
         fidx=self.dbIndex[idx].replace("|",".")
-        entries=FF.ReadFile2List(fidx)
+        entries=FF.ReadFile2List(fidx,Unique=False)
         kvtbl={}
         for line in entries:
             try:
@@ -197,19 +227,19 @@ class JackrabbitDB:
     # Binary search.  Really nice is index is already sorted.
 
     def BinaryIndexSearch(self, idx, record):
-        fidx = self.dbIndex[idx].replace("|", ".")
-        entries = FF.ReadFile2List(fidx)
+        fidx=self.dbIndex[idx].replace("|", ".")
+        entries=FF.ReadFile2List(fidx,Unique=False)
         if not entries:
             return
 
         # Build search key
         if "|" in idx:
-            target = "|".join(str(record[k]) for k in idx.split("|"))
+            target="|".join(str(record[k]) for k in idx.split("|"))
         else:
-            target = str(record[idx])
+            target=str(record[idx])
 
         # Binary search on entries list (already sorted by Key)
-        lo, hi = 0, len(entries) - 1
+        lo, hi=0, len(entries) - 1
         while lo<=hi:
             mid=(lo+hi)//2
             kvtbl=json.loads(entries[mid])
@@ -230,6 +260,9 @@ class JackrabbitDB:
 
 def TestDB():
     dir="/bin"
+    if len(sys.argv)>1:
+        dir=sys.argv[1]
+
     db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File","LastAccessed|File"])
     for file in os.listdir(dir):
         nr={}
@@ -246,9 +279,16 @@ def TestDB():
         else:
             nr['Type']='Special'
         nr['Added']=time.time()
+        stime=time.time()
         db.Add(nr)
-        if db.Error:
+        etime=time.time()
+        if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
+#        else:
+#            print(f"Elapsed: {etime-stime:.8f} seconds")
+    results=db.SearchContains("bash")
+    for res in results:
+        print(res)
 
 if __name__=="__main__":
     TestDB()
