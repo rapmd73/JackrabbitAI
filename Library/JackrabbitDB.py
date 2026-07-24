@@ -28,6 +28,7 @@ class JackrabbitDB:
         self.syncIDX=syncIDX
         self.dbDir=name
         self.dbName=f"{self.dbDir}/Data.JDB"
+        self.dbTombstone=f"{self.dbDir}/Tombstone.log"
 
         # Create index table
         self.dbIndex={}
@@ -75,6 +76,7 @@ class JackrabbitDB:
         # Get the length
         fh.seek(offset,os.SEEK_SET)
         buf=fh.readline()
+        FF.AppendFile(self.dbTombstone,buf.decode('utf-8').strip()+"\n")
         # Write the tombstone, take off \n. We need to fill exact space
         fh.seek(offset,os.SEEK_SET)
         dashes="-"*(len(buf)-1)
