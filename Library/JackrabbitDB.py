@@ -56,6 +56,36 @@ class JackrabbitDB:
         self.UpdateIndexes(ptr,record)
         return ptr,record
 
+    # Update: append new record.  turn old record into tombstone.
+    def Update(self,offset,record):
+        # Add update to bottom
+        ptr=FF.GetFileSize(self.dbName)
+        r=json.dumps(record)+'\n'
+        FF.AppendFile(self.dbName,r,sync=self.syncDB)
+        # Turn old record to tombstone
+        self.WriteTombstone(offset)
+        # Rebuild indexes
+        self.CheckIndexes()
+        return ptr,record
+
+    # Write a tombstone
+    def WriteTombstone(self,offset):
+        # Open for read/wwwrite
+        fh=open(self.dbName,"rb+")
+        # Get the length
+        fh.seek(offset,os.SEEK_SET)
+        buf=fh.readline()
+        # Write the tombstone, take off \n. We need to fill exact space
+        fh.seek(offset,os.SEEK_SET)
+        dashes="-"*(len(buf)-1)
+        line=fh.write(dashes.encode('utf-8'))
+        # Sync the file
+        if self.syncDB:
+            fh.flush()
+            os.fsync(fh.fileno())
+        fh.close()
+
+    # Read a record at a position
     def Read(self,offset):
         fh=open(self.dbName,"rb")
         fh.seek(offset,os.SEEK_SET)
@@ -67,10 +97,6 @@ class JackrabbitDB:
             self.Error=err
             return None
         return line
-
-    # Update: upsert. If record exists (by index keys), do nothing. Else Add.
-    def Update(self,record):
-        return self.Add(record)
 
     # Actually update ALL index files.
 
@@ -123,30 +149,6 @@ class JackrabbitDB:
                     self.Error="Duplicate"
                     return
 
-    # Blind search for a string in all indexes
-
-    def SearchContains(self,srch):
-        self.Error=None
-        results=[]
-        # We need to walk every index file
-        for idx in self.dbIndex.keys():
-            fidx=self.dbIndex[idx].replace("|",".")
-            if os.path.exists(fidx):
-                entries=FF.ReadFile2List(fidx,Unique=False)
-                for line in entries:
-                    try:
-                        kvtbl=json.loads(line)
-                    except Exception as err:
-                        continue
-                    # If srch string found, add to results list
-                    if srch in kvtbl['Key'] and kvtbl['Key'] not in results:
-                        kvtbl['SearchIndex']=idx
-                        results.append(kvtbl)
-
-        if results==[]:
-            return None
-        return results
-
     # Check Index age and force a rebuild if needed
 
     def CheckIndexes(self):
@@ -181,8 +183,17 @@ class JackrabbitDB:
             bline=fh.readline()
             if not bline:
                 break
+            if bline.startswith(b'---'):
+                ptr+=len(bline)
+                continue
 
-            record=json.loads(bline)
+            try:
+                record=json.loads(bline)
+            except Exception as err:
+                ptr+=len(bline)
+                print(err)
+                continue
+
             kvtbl={}
             # Add new or overwrite old
             if "|" in idx:
@@ -252,6 +263,30 @@ class JackrabbitDB:
                 hi=mid-1
         return None
 
+    # Blind search for a string in all indexes
+
+    def SearchContains(self,srch):
+        self.Error=None
+        results=[]
+        # We need to walk every index file
+        for idx in self.dbIndex.keys():
+            fidx=self.dbIndex[idx].replace("|",".")
+            if os.path.exists(fidx):
+                entries=FF.ReadFile2List(fidx,Unique=False)
+                for line in entries:
+                    try:
+                        kvtbl=json.loads(line)
+                    except Exception as err:
+                        continue
+                    # If srch string found, add to results list
+                    if srch in kvtbl['Key'] and kvtbl['Key'] not in results:
+                        kvtbl['SearchIndex']=idx
+                        results.append(kvtbl)
+
+        if results==[]:
+            return None
+        return results
+
 ###
 ### End library
 ###
@@ -287,8 +322,18 @@ def TestDB():
 #        else:
 #            print(f"Elapsed: {etime-stime:.8f} seconds")
     results=db.SearchContains("bash")
+    lu=[]
     for res in results:
-        print(res)
+        if res['Offset'] not in lu:
+            lu.append(res['Offset'])
+            record=db.Read(res['Offset'])
+            print(record)
+            print()
+            if not db.Error:
+                record['EditCount']=record.get('EditCount',0)+1
+                record['Edited']=time.time()
+                ptr,newrec=db.Update(res['Offset'],record)
+                print(ptr,newrec)
 
 if __name__=="__main__":
     TestDB()
