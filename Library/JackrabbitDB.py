@@ -10,6 +10,7 @@
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import os
+import hashlib
 import datetime
 import time
 import random
@@ -40,6 +41,39 @@ class JackrabbitDB:
 
         FF.mkdir(self.dbDir)
 
+    # Create a Blake 2B hash. Argument is JSON
+
+    def Blake2B(self,text):
+        if isinstance(text,dict):
+            rec=json.dumps(text)
+        else:
+            rec=text
+        h=hashlib.blake2b(digest_size=64)
+        h.update(rec.encode('utf-8'))
+        return h.hexdigest()
+
+    # Verify the record hash as stable. Argument COULD be JSON or STR
+
+    def VerifyBlake2B(self,record):
+        if isinstance(record,str):
+            rec=json.loads(record)
+        else:
+            rec=record.copy()
+
+        # Get old hash
+        oldBlake2B=rec.get('jrdbBlake2B',None)
+
+        # No hash, no match
+        if oldBlake2B is None:
+            return False
+
+        # Get rid of the hash and generate the test hash.
+        rec.pop('jrdbBlake2B',None)
+        newBlake2B=self.Blake2B(rec)
+        if newBlake2B==oldBlake2B:
+            return True
+        return False
+
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
 
@@ -51,6 +85,7 @@ class JackrabbitDB:
         if self.Error:
             return None, None
 
+        record['jrdbBlake2B']=self.Blake2B(json.dumps(record))
         ptr=FF.GetFileSize(self.dbName)
         r=json.dumps(record)+'\n'
         FF.AppendFile(self.dbName,r,sync=self.syncDB)
@@ -59,6 +94,9 @@ class JackrabbitDB:
 
     # Update: append new record.  turn old record into tombstone.
     def Update(self,offset,record):
+        # The old hash MUST be removed before calculating the new hash
+        record.pop('jrdbBlake2B',None)
+        record['jrdbBlake2B']=self.Blake2B(json.dumps(record))
         # Add update to bottom
         ptr=FF.GetFileSize(self.dbName)
         r=json.dumps(record)+'\n'
@@ -96,8 +134,11 @@ class JackrabbitDB:
         try:
             line=json.loads(line)
         except Exception as err:
-            self.Error=err
+            self.Error=f"JSON: {err}"
             return None
+        if not self.VerifyBlake2B(line):
+            self.Error=f"DB Corruption: {line}"
+            raise Exception(self.Error)
         return line
 
     # Actually update ALL index files.
