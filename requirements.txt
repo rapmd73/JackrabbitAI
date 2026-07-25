@@ -23,3 +23,4 @@ telethon
 gtts
 playwright
 beautifulsoup4
+blake3
