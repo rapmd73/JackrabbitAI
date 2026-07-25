@@ -86,7 +86,7 @@ class JackrabbitDB:
         if self.Error:
             return None, None
 
-        record['jrdbBlake']=self.Blake(json.dumps(record))
+        record['jrdbBlake']=self.Blake(record)
         ptr=FF.GetFileSize(self.dbName)
         r=json.dumps(record)+'\n'
         FF.AppendFile(self.dbName,r,sync=self.syncDB)
