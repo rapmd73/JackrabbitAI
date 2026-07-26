@@ -104,6 +104,19 @@ def WriteFile(fn,data,sync=False):
         os.fsync(fh.fileno())
     fh.close()
 
+# Write data at a specific location in a file.
+
+@DF.function_trapper(None)
+def WriteSeek(fn,offset,data,sync=False):
+    fh=open(fn,"rb+")
+    fh.seek(offset,os.SEEK_SET)
+    fh.write(data)
+    # Sync the file
+    if sync:
+        fh.flush()
+        os.fsync(fh.fileno())
+    fh.close()
+
 # This function returns the size of the file.
 
 @DF.function_trapper(None)

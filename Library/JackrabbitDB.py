@@ -30,6 +30,7 @@ class JackrabbitDB:
         self.dbDir=name
         self.dbName=f"{self.dbDir}/Data.JDB"
         self.dbTransaction=f"{self.dbDir}/Transaction.log"
+        self.dbTombstones=[]
 
         # Create index table
         self.dbIndex={}
@@ -40,7 +41,7 @@ class JackrabbitDB:
         self.Error=None
 
         FF.mkdir(self.dbDir)
-        self.CheckIndexes()
+        self.CheckIndexes(True)
 
     # Create a Blake hash. Argument is JSON. Test just incase JSONL is passed
 
@@ -130,27 +131,60 @@ class JackrabbitDB:
         self.CheckIndexes()
         return ptr,record
 
+    # Find offset in tombstone list
+
+    def CheckTombstones(self,offset):
+        for ts in self.dbTombstones:
+            if offset==ts[0]:
+                return True
+        return False
+
+    # Compact and merge tombstone list
+
+    def TombstoneCompaction(self):
+        # if nothing to merge, just return
+        if len(self.dbTombstones) < 2:
+            return
+
+        # Make sure the order of offsets is sorted
+        self.dbTombstones.sort(key=lambda x: x[0])
+
+        # Merge adjacent tombstones
+        merged=[]
+        cur_off, cur_len=self.dbTombstones[0]
+        for off, ln in self.dbTombstones[1:]:
+            if off==cur_off+cur_len:
+                # if 2 tombstones are adjacent to each other, merge them
+                cur_len+=ln
+            else:
+                # Not adjacent, save and move to the next region
+                merged.append([cur_off, cur_len])
+                cur_off, cur_len=off,ln
+        merged.append([cur_off, cur_len])
+        self.dbTombstones=merged
+
     # Delete a record
     def Delete(self,offset=None):
         # One of these MUST be present
         if not offset:
             return False
 
-        # Open for read/write
-        fh=open(self.dbName,"rb+")
-        # Get the length
-        fh.seek(offset,os.SEEK_SET)
-        buf=fh.readline()
-        self.WriteTransaction("DELETE",buf.decode('utf-8'))
+        # Verify old record, boundary start/Blake3
+        # This blocks random offset attacks or bad programming
+        buf=self.Read(offset)
+        if buf is None:
+            raise Exception(f"Record damaged as {offset}")
+        buf=json.dumps(buf)  # STRIPS \n from count, which leave it in file
+        self.WriteTransaction("DELETE",buf)
         # Write the tombstone, take off \n. We need to fill exact space
-        fh.seek(offset,os.SEEK_SET)
-        dashes="-"*(len(buf)-1)
-        line=fh.write(dashes.encode('utf-8'))
-        # Sync the file
-        if self.syncDB:
-            fh.flush()
-            os.fsync(fh.fileno())
-        fh.close()
+        dashes="-"*(len(buf)) # REMEMBER no \n in count
+        # Open for read/write
+        FF.WriteSeek(self.dbName,offset,dashes.encode('utf-8'),sync=self.syncDB)
+        if not self.CheckTombstones(offset):
+            # Processed, \n NOT included
+            self.dbTombstones.append([offset,len(buf)+1])
+
+        self.TombstoneCompaction()
         return True
 
     # Read a record at a position
@@ -222,7 +256,7 @@ class JackrabbitDB:
 
     # Check Index age and force a rebuild if needed
 
-    def CheckIndexes(self):
+    def CheckIndexes(self,force=False):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return
@@ -233,14 +267,17 @@ class JackrabbitDB:
         # We need to walk every index file
         for idx in self.dbIndex.keys():
             fidx=self.dbIndex[idx].replace("|",".")
-            if os.path.exists(fidx):
+            if os.path.exists(fidx) or force:
                 iMtime=os.path.getmtime(fidx)
                 if iMtime<dbMtime:
                     self.RebuildIndex(idx)
             else:
                 self.RebuildIndex(idx)
 
+    # Rebuild a single index
+
     def RebuildIndex(self,idx):
+        self.Tombstones=[]
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return
@@ -254,7 +291,12 @@ class JackrabbitDB:
             bline=fh.readline()
             if not bline:
                 break
+            # Tomestone record
             if bline.startswith(b'---'):
+                # Add to tombstone registry
+                if not self.CheckTombstones(ptr):
+                    # This is RAW line, \n included
+                    self.dbTombstones.append([ptr,len(bline)])
                 ptr+=len(bline)
                 continue
 
@@ -264,6 +306,14 @@ class JackrabbitDB:
                 ptr+=len(bline)
                 print(err)
                 continue
+
+            # Verify record integrity. Required to mintain a full "NO
+            # TRUST" environment. There is a price to pay in latency and
+            # overhead.
+
+            if not self.VerifyBlake(record):
+                self.Error=f"DB Corruption: {bline.strip()}"
+                raise Exception(self.Error)
 
             kvtbl={}
             # Add new or overwrite old
@@ -369,7 +419,9 @@ def TestDB():
     if len(sys.argv)>1:
         dir=sys.argv[1]
 
-    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File","LastAccessed|File"])
+    # Create/Open database
+    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File","File|ID","LastAccessed|File"])
+    # Add files as data set
     for file in os.listdir(dir):
         nr={}
         nr['ID']=CF.GetID(31,31)
@@ -389,13 +441,10 @@ def TestDB():
         etime=time.time()
         if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
-#        else:
-#            print(f"Elapsed: {etime-stime:.8f} seconds")
 
-    """
-    # Find bash
+    # Find all records with "bash" and edit them
     results=db.SearchContains("bash")
-    lu=[]
+    lu=[] # Searching multiple indexes can give duplicate offsets.
     for res in results:
         if res['Offset'] not in lu:
             lu.append(res['Offset'])
@@ -407,7 +456,7 @@ def TestDB():
                 ptr,newrec=db.Update(res['Offset'],record)
                 print(ptr,newrec)
 
-    # Delete python
+    # Find and delete all records with python in them
     results=db.SearchContains("python")
     lu=[]
     for res in results:
@@ -416,7 +465,9 @@ def TestDB():
             if not db.Error:
                 done=db.Delete(res['Offset'])
                 print(done,res['Key'])
-    """
+
+    # Print the tombstone list
+    print(db.dbTombstones)
 
 if __name__=="__main__":
     TestDB()
