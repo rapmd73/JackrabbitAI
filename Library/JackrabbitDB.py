@@ -29,7 +29,7 @@ class JackrabbitDB:
         self.syncIDX=syncIDX
         self.dbDir=name
         self.dbName=f"{self.dbDir}/Data.JDB"
-        self.dbTombstone=f"{self.dbDir}/Tombstone.log"
+        self.dbTransaction=f"{self.dbDir}/Transaction.log"
 
         # Create index table
         self.dbIndex={}
@@ -40,6 +40,7 @@ class JackrabbitDB:
         self.Error=None
 
         FF.mkdir(self.dbDir)
+        self.CheckIndexes()
 
     # Create a Blake hash. Argument is JSON. Test just incase JSONL is passed
 
@@ -75,6 +76,17 @@ class JackrabbitDB:
             return True
         return False
 
+    # Write out a transaction log
+
+    def WriteTransaction(self,cmd,data):
+        if isinstance(data,dict):
+            text=json.dumps(data)
+        else:
+            text=data.strip()
+
+        record=f"{cmd}|{text}\n"
+        FF.AppendFile(self.dbTransaction,record,sync=self.syncDB)
+
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
 
@@ -86,42 +98,50 @@ class JackrabbitDB:
         if self.Error:
             return None, None
 
+        record['jrdbAdded']=time.time()
         record['jrdbBlake']=self.Blake(record)
         ptr=FF.GetFileSize(self.dbName)
         r=json.dumps(record)+'\n'
+        self.WriteTransaction("ADD",record)
         FF.AppendFile(self.dbName,r,sync=self.syncDB)
         self.UpdateIndexes(ptr,record)
         return ptr,record
 
-    # Update: append new record.  turn old record into tombstone.
+    # Update: append new record.  turn old record into tombstones.
     def Update(self,offset,record):
         # Get versions and add to latest update
         oldrec=self.Read(offset)
         vers=oldrec.pop('jrdbVersions',[])
         vers.append(oldrec)
         record['jrdbVersions']=vers
+        record['jrdbUpdated']=time.time()
         # The old hash MUST be removed before calculating the new hash
         # MUST happen before write to disk.
         record.pop('jrdbBlake',None)
-        record['jrdbBlake']=self.Blake(json.dumps(record))
+        record['jrdbBlake']=self.Blake(record)
         # Add update to bottom
         ptr=FF.GetFileSize(self.dbName)
         r=json.dumps(record)+'\n'
+        self.WriteTransaction("UPDATE",record)
         FF.AppendFile(self.dbName,r,sync=self.syncDB)
         # Turn old record to tombstone
-        self.WriteTombstone(offset)
+        self.Delete(offset=offset)
         # Rebuild indexes
         self.CheckIndexes()
         return ptr,record
 
-    # Write a tombstone
-    def WriteTombstone(self,offset):
-        # Open for read/wwwrite
+    # Delete a record
+    def Delete(self,offset=None):
+        # One of these MUST be present
+        if not offset:
+            return False
+
+        # Open for read/write
         fh=open(self.dbName,"rb+")
         # Get the length
         fh.seek(offset,os.SEEK_SET)
         buf=fh.readline()
-        FF.AppendFile(self.dbTombstone,buf.decode('utf-8').strip()+"\n")
+        self.WriteTransaction("DELETE",buf.decode('utf-8'))
         # Write the tombstone, take off \n. We need to fill exact space
         fh.seek(offset,os.SEEK_SET)
         dashes="-"*(len(buf)-1)
@@ -131,6 +151,7 @@ class JackrabbitDB:
             fh.flush()
             os.fsync(fh.fileno())
         fh.close()
+        return True
 
     # Read a record at a position
     def Read(self,offset):
@@ -363,7 +384,6 @@ def TestDB():
             nr['Type']='SymLink'
         else:
             nr['Type']='Special'
-        nr['Added']=time.time()
         stime=time.time()
         db.Add(nr)
         etime=time.time()
@@ -371,6 +391,9 @@ def TestDB():
             print(f"{db.Error} {nr['File']}")
 #        else:
 #            print(f"Elapsed: {etime-stime:.8f} seconds")
+
+    """
+    # Find bash
     results=db.SearchContains("bash")
     lu=[]
     for res in results:
@@ -381,9 +404,19 @@ def TestDB():
             print()
             if not db.Error:
                 record['EditCount']=record.get('EditCount',0)+1
-                record['Edited']=time.time()
                 ptr,newrec=db.Update(res['Offset'],record)
                 print(ptr,newrec)
+
+    # Delete python
+    results=db.SearchContains("python")
+    lu=[]
+    for res in results:
+        if res['Offset'] not in lu:
+            lu.append(res['Offset'])
+            if not db.Error:
+                done=db.Delete(res['Offset'])
+                print(done,res['Key'])
+    """
 
 if __name__=="__main__":
     TestDB()
