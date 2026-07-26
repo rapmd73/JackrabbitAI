@@ -61,7 +61,11 @@ class JackrabbitDB:
             # Do NOT damage the original. CRITICAL!
             rec=record.copy()
         else:
-            rec=json.loads(record)
+            try:
+                rec=json.loads(record)
+            except Exception as err:
+                self.Error=err
+                raise Exception("Blake3 verification failed.")
 
         # Get old hash
         oldBlake=rec.get('jrdbBlake',None)
@@ -88,6 +92,29 @@ class JackrabbitDB:
         record=f"{cmd}|{text}\n"
         FF.AppendFile(self.dbTransaction,record,sync=self.syncDB)
 
+    # Recycle tombstones if possible.  Returns T/F,offset. True if recycled
+
+    def GetNextOffset(self, record):
+        if isinstance(record, dict):
+            rec=json.dumps(record)+'\n'
+        else:
+            rec=record.strip()+'\n'
+
+        needed=len(rec)
+        self.TombstoneCompaction()
+
+        for i, (offset, length) in enumerate(self.dbTombstones):
+            if length>=needed:
+                # Exact fit - remove slot
+                if length==needed:
+                    self.dbTombstones.pop(i)
+                # Partial fit - shrink slot
+                else:
+                    self.dbTombstones[i]=[offset+needed,length-needed]
+                return True,offset
+
+        return False,FF.GetFileSize(self.dbName)
+
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
 
@@ -101,10 +128,16 @@ class JackrabbitDB:
 
         record['jrdbAdded']=time.time()
         record['jrdbBlake']=self.Blake(record)
-        ptr=FF.GetFileSize(self.dbName)
+        # Find next offset, recycle tombstones if possible
+        roa,ptr=self.GetNextOffset(record)
         r=json.dumps(record)+'\n'
         self.WriteTransaction("ADD",record)
-        FF.AppendFile(self.dbName,r,sync=self.syncDB)
+        if roa:
+            # Recycle space
+            FF.WriteSeek(self.dbName,ptr,r.encode('utf-8'),sync=self.syncDB)
+        else:
+            # Add to end of file
+            FF.AppendFile(self.dbName,r,sync=self.syncDB)
         self.UpdateIndexes(ptr,record)
         return ptr,record
 
@@ -121,10 +154,15 @@ class JackrabbitDB:
         record.pop('jrdbBlake',None)
         record['jrdbBlake']=self.Blake(record)
         # Add update to bottom
-        ptr=FF.GetFileSize(self.dbName)
+        roa,ptr=self.GetNextOffset(record)
         r=json.dumps(record)+'\n'
         self.WriteTransaction("UPDATE",record)
-        FF.AppendFile(self.dbName,r,sync=self.syncDB)
+        if roa:
+            # Recycle space
+            FF.WriteSeek(self.dbName,ptr,r.encode('utf-8'),sync=self.syncDB)
+        else:
+            # Add to end of file
+            FF.AppendFile(self.dbName,r,sync=self.syncDB)
         # Turn old record to tombstone
         self.Delete(offset=offset)
         # Rebuild indexes
@@ -277,13 +315,13 @@ class JackrabbitDB:
     # Rebuild a single index
 
     def RebuildIndex(self,idx):
-        self.Tombstones=[]
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return
 
         # Force rebuild
         self.Error=None
+        self.Tombstones=[]
         entries=[]
         ptr=0
         fh=open(self.dbName,"rb")
@@ -292,7 +330,7 @@ class JackrabbitDB:
             if not bline:
                 break
             # Tomestone record
-            if bline.startswith(b'---'):
+            if not bline.startswith(b'{'):
                 # Add to tombstone registry
                 if not self.CheckTombstones(ptr):
                     # This is RAW line, \n included
@@ -304,7 +342,8 @@ class JackrabbitDB:
                 record=json.loads(bline)
             except Exception as err:
                 ptr+=len(bline)
-                print(err)
+                print("REBUILD JSON:",err)
+                print(bline)
                 continue
 
             # Verify record integrity. Required to mintain a full "NO
@@ -454,7 +493,6 @@ def TestDB():
             if not db.Error:
                 record['EditCount']=record.get('EditCount',0)+1
                 ptr,newrec=db.Update(res['Offset'],record)
-                print(ptr,newrec)
 
     # Find and delete all records with python in them
     results=db.SearchContains("python")
