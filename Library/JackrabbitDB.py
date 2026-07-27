@@ -294,7 +294,7 @@ class JackrabbitDB:
 
         # Force rebuild
         self.Error=None
-        self.Tombstones=[]
+        self.dbTombstones=[]
         entries=[]
         ptr=0
         fh=open(self.dbName,"rb")
@@ -343,7 +343,7 @@ class JackrabbitDB:
         fidx=self.dbIndex[idx].replace("|",".")
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
 
-    # Rebuild a single index
+    # Verify the integrity of the database
 
     def VerifyDatabase(self):
         # No DB, nothing to check.
@@ -384,6 +384,60 @@ class JackrabbitDB:
         if not self.Error:
             return True
         return False
+
+    # Pack the database, remove tombstones
+
+    def PackDatabase(self):
+        # No DB, nothing to check.
+        if not os.path.exists(self.dbName):
+            return False
+
+        # Make sure the work file does NOT exist
+        packName=(f"{self.dbName}.packwork")
+        if os.path.exists(packName):
+            os.remove(packName)
+
+        # Force pack
+        self.Error=None
+        fh=open(self.dbName,"r")
+        while True:
+            bline=fh.readline()
+            if not bline:
+                break
+
+            # Tomestone or broken, skip
+            if not bline.startswith('{'):
+                continue
+
+            try:
+                record=json.loads(bline)
+            except Exception as err:
+                self.Error="VerifyDB JSON: {err}"
+                print(self.Error)
+                print(bline.decode('utf-8'))
+                continue
+
+            # Verify record integrity. Required to mintain a full "NO
+            # TRUST" environment. There is a price to pay in latency and
+            # overhead.
+
+            if not self.VerifyBlake(record):
+                self.Error="Corruption"
+                print(f"Corruption: {bline.decode('utf-8')}")
+
+            # WWrite out the new record
+            FF.AppendFile(packName,json.dumps(record)+'\n',sync=self.syncDB)
+        fh.close()
+
+        try:
+            os.replace(self.dbName,f"{self.dbName}.backup")
+            os.replace(packName,self.dbName)
+        except Exception as err:
+            self.Error="Pack Failure"
+
+        if self.Error:
+            return False
+        return True
 
     # Linear (brute force) search
 
@@ -475,7 +529,8 @@ def TestDB():
         dir=sys.argv[1]
 
     # Create/Open database
-    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File","File|ID","LastAccessed|File"])
+#    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File","File|ID","LastAccessed|File"])
+    db=JackrabbitDB("/tmp/FilesDB",idx=["ID"])
     # Add files as data set
     for file in os.listdir(dir):
         nr={}
@@ -497,6 +552,7 @@ def TestDB():
         if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
 
+    """
     # Find all records with "bash" and edit them
     results=db.SearchContains("bash")
     if results:
@@ -519,10 +575,12 @@ def TestDB():
                 if not db.Error:
                     done=db.Delete(res['Offset'])
     #                print(done,res['Key'])
+    """
 
-    # Print the tombstone list
-    print(db.dbTombstones)
-    print(db.VerifyDatabase())
+    if not db.PackDatabase():
+        print("Pack corruption.")
+    if not db.VerifyDatabase():
+        print("Database corruption.")
 
 if __name__=="__main__":
     TestDB()
