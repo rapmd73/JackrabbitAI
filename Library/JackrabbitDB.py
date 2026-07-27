@@ -101,7 +101,6 @@ class JackrabbitDB:
             rec=record.strip()+'\n'
 
         needed=len(rec)
-        self.TombstoneCompaction()
 
         for i, (offset, length) in enumerate(self.dbTombstones):
             if length>=needed:
@@ -109,7 +108,7 @@ class JackrabbitDB:
                 if length==needed:
                     self.dbTombstones.pop(i)
                 # Partial fit - shrink slot
-                else: ###>>> +1 on offset?
+                else:
                     self.dbTombstones[i]=[offset+needed,length-needed]
                 return True,offset
 
@@ -177,31 +176,6 @@ class JackrabbitDB:
                 return True
         return False
 
-    # Compact and merge tombstone list
-
-    def TombstoneCompaction(self):
-        # if nothing to merge, just return
-        if len(self.dbTombstones) < 2:
-            return
-
-        # Make sure the order of offsets is sorted
-        self.dbTombstones.sort(key=lambda x: x[0])
-
-        # Merge adjacent tombstones
-        merged=[]
-        cur_off, cur_len=self.dbTombstones[0]
-        for off, ln in self.dbTombstones[1:]:
-            print(off,ln)
-            if off==cur_off+cur_len:
-                # if 2 tombstones are adjacent to each other, merge them
-                cur_len+=ln
-            else:
-                # Not adjacent, save and move to the next region
-                merged.append([cur_off, cur_len])
-                cur_off, cur_len=off,ln
-        merged.append([cur_off, cur_len])
-#        self.dbTombstones=merged
-
     # Delete a record
     def Delete(self,offset=None):
         # One of these MUST be present
@@ -222,8 +196,6 @@ class JackrabbitDB:
         if not self.CheckTombstones(offset):
             # Processed, \n NOT included
             self.dbTombstones.append([offset,len(buf)+1])
-
-        self.TombstoneCompaction()
         return True
 
     # Read a record at a position
@@ -328,6 +300,7 @@ class JackrabbitDB:
         fh=open(self.dbName,"rb")
         while True:
             bline=fh.readline()
+            # No more data
             if not bline:
                 break
             # Tomestone record
