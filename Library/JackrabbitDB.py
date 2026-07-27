@@ -109,7 +109,7 @@ class JackrabbitDB:
                 if length==needed:
                     self.dbTombstones.pop(i)
                 # Partial fit - shrink slot
-                else:
+                else: ###>>> +1 on offset?
                     self.dbTombstones[i]=[offset+needed,length-needed]
                 return True,offset
 
@@ -191,6 +191,7 @@ class JackrabbitDB:
         merged=[]
         cur_off, cur_len=self.dbTombstones[0]
         for off, ln in self.dbTombstones[1:]:
+            print(off,ln)
             if off==cur_off+cur_len:
                 # if 2 tombstones are adjacent to each other, merge them
                 cur_len+=ln
@@ -199,7 +200,7 @@ class JackrabbitDB:
                 merged.append([cur_off, cur_len])
                 cur_off, cur_len=off,ln
         merged.append([cur_off, cur_len])
-        self.dbTombstones=merged
+#        self.dbTombstones=merged
 
     # Delete a record
     def Delete(self,offset=None):
@@ -369,6 +370,48 @@ class JackrabbitDB:
         fidx=self.dbIndex[idx].replace("|",".")
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
 
+    # Rebuild a single index
+
+    def VerifyDatabase(self):
+        # No DB, nothing to check.
+        if not os.path.exists(self.dbName):
+            return False
+
+        # Force rebuild
+        self.Error=None
+        ptr=0
+        fh=open(self.dbName,"rb")
+        while True:
+            bline=fh.readline()
+            if not bline:
+                break
+            # Tomestone or broken
+            if not bline.startswith(b'{'):
+                ptr+=len(bline)
+                continue
+
+            try:
+                record=json.loads(bline)
+            except Exception as err:
+                ptr+=len(bline)
+                self.Error="VerifyDB JSON: {err}"
+                print(self.Error)
+                print(bline.decode('utf-8'))
+                continue
+
+            # Verify record integrity. Required to mintain a full "NO
+            # TRUST" environment. There is a price to pay in latency and
+            # overhead.
+
+            if not self.VerifyBlake(record):
+                self.Error="Corruption"
+                print(f"Corruption: {bline.decode('utf-8')}")
+        fh.close()
+
+        if not self.Error:
+            return True
+        return False
+
     # Linear (brute force) search
 
     def LinearIndexSearch(self,idx,record):
@@ -483,29 +526,30 @@ def TestDB():
 
     # Find all records with "bash" and edit them
     results=db.SearchContains("bash")
-    lu=[] # Searching multiple indexes can give duplicate offsets.
-    for res in results:
-        if res['Offset'] not in lu:
-            lu.append(res['Offset'])
-            record=db.Read(res['Offset'])
-            print(record)
-            print()
-            if not db.Error:
-                record['EditCount']=record.get('EditCount',0)+1
-                ptr,newrec=db.Update(res['Offset'],record)
+    if results:
+        lu=[] # Searching multiple indexes can give duplicate offsets.
+        for res in results:
+            if res['Offset'] not in lu:
+                lu.append(res['Offset'])
+                record=db.Read(res['Offset'])
+                if not db.Error:
+                    record['EditCount']=record.get('EditCount',0)+1
+                    ptr,newrec=db.Update(res['Offset'],record)
 
     # Find and delete all records with python in them
     results=db.SearchContains("python")
-    lu=[]
-    for res in results:
-        if res['Offset'] not in lu:
-            lu.append(res['Offset'])
-            if not db.Error:
-                done=db.Delete(res['Offset'])
-                print(done,res['Key'])
+    if results:
+        lu=[]
+        for res in results:
+            if res['Offset'] not in lu:
+                lu.append(res['Offset'])
+                if not db.Error:
+                    done=db.Delete(res['Offset'])
+    #                print(done,res['Key'])
 
     # Print the tombstone list
     print(db.dbTombstones)
+    print(db.VerifyDatabase())
 
 if __name__=="__main__":
     TestDB()
