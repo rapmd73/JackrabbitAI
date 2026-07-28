@@ -183,11 +183,12 @@ class JackrabbitDB:
             return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
 
         # Set the cursor
-        if pos==-1:
-            self.dbCursor[cursor]["Position"]=len(self.dbCursor[cursor]["Entries"])-1
-            return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
-        if pos<-1:
-            pos=self.dbCursor[cursor]["Position"]=0
+        if pos<0:
+            l=len(self.dbCursor[cursor]["Entries"])+pos
+            if l<0:
+                l=0
+            self.dbCursor[cursor]["Position"]=l
+            pos=l
             return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
         if pos>len(self.dbCursor[cursor]["Entries"])-1:
             pos=len(self.dbCursor[cursor]["Entries"])-1
@@ -678,6 +679,9 @@ def TestDB():
     # Force set cursor
     print("Cursor tests")
     offset=db.SetCursor(cursor="File",pos=6)
+    record=db.Read(offset)
+    print(record)
+    offset=db.SetCursor(cursor="File",pos=-3)
     record=db.Read(offset)
     print(record)
 
