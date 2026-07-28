@@ -38,6 +38,9 @@ class JackrabbitDB:
             for i in idx:
                 self.dbIndex[i]=f"{self.dbDir}/Index.{i}.JIDX"
 
+        # Create cursors
+        self.dbCursor={}
+
         # Report errors, including duplicates
         self.Error=None
 
@@ -143,8 +146,85 @@ class JackrabbitDB:
         if os.path.exists(fidx) and delete:
             os.remove(fidx)
         self.dbIndex.pop(idx,None)
-#        self._InvalidateCursor(idx)
+        self.dbCursor.pop(idx,None)
         return True
+
+    # Reset cursor. 0 is start, -1 is end.
+
+    def SetCursor(self,cursor,pos=None):
+        if cursor not in self.dbIndex:
+            raise Exception('Index not loaded: cursor')
+
+        # Cursor not initialized
+        if cursor not in self.dbCursor:
+            if not pos:
+                pos=0
+            fidx=self.dbIndex[cursor].replace("|",".")
+            entries=FF.ReadFile2List(fidx,Unique=False)
+            idxMtime=os.path.getmtime(fidx)
+            self.dbCursor[cursor]={ "Position":pos, "idxMtime":idxMtime, "Entries":entries }
+        # Cursor initialized
+        else:
+            if not pos:
+                pos=0
+
+            self.dbCursor[cursor]["Position"]=pos
+
+        fidx=self.dbIndex[cursor].replace("|",".")
+        idxMtime=os.path.getmtime(fidx)
+
+        # if disk file is more up-to-date, reload and resync cursor by
+        # key (future concept)
+
+        if self.dbCursor[cursor]['idxMtime']<idxMtime:
+            pos=0
+            entries=FF.ReadFile2List(fidx,Unique=False)
+            self.dbCursor[cursor]={ "Position":pos, "idxMtime":idxMtime, "Entries":entries }
+            return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
+
+        # Set the cursor
+        if pos==-1:
+            self.dbCursor[cursor]["Position"]=len(self.dbCursor[cursor]["Entries"])-1
+            return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
+        if pos<-1:
+            pos=self.dbCursor[cursor]["Position"]=0
+            return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
+        if pos>len(self.dbCursor[cursor]["Entries"])-1:
+            pos=len(self.dbCursor[cursor]["Entries"])-1
+
+        self.dbCursor[cursor]["Position"]=pos
+        return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
+
+    # Get cursor. Return both key and offset
+
+    def GetCursor(self,cursor):
+        if cursor not in self.dbIndex:
+            raise Exception('Index not loaded: cursor')
+
+        # Cursor not initialized
+        if cursor not in self.dbCursor:
+            pos=0
+            fidx=self.dbIndex[cursor].replace("|",".")
+            idxMtime=os.path.getmtime(fidx)
+            entries=FF.ReadFile2List(fidx,Unique=False)
+            self.dbCursor[cursor]={ "Position":pos, "idxMtime":idxMtime, "Entries":entries }
+
+        pos=self.dbCursor[cursor]["Position"]
+        idx=self.dbCursor[cursor]["Entries"][pos]
+
+        return pos,json.loads(idx)
+
+    # Get the next record
+
+    def Next(self,cursor):
+        pos,idx=self.GetCursor(cursor=cursor)
+        return self.Read(self.SetCursor(cursor,pos+1))
+
+    # Get the previous record
+
+    def Previous(self,cursor):
+        pos,idx=self.GetCursor(cursor=cursor)
+        return self.Read(self.SetCursor(cursor,pos-1))
 
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
@@ -170,6 +250,8 @@ class JackrabbitDB:
             # Add to end of file
             FF.AppendFile(self.dbName,r,sync=self.syncDB)
         self.UpdateIndexes(ptr,record)
+        # Reset cursors
+        self.dbCursor={}
         return ptr,record
 
     # Update: append new record.  turn old record into tombstones.
@@ -198,6 +280,8 @@ class JackrabbitDB:
         self.Delete(offset=offset)
         # Rebuild indexes
         self.CheckIndexes()
+        # Reset cursors
+        self.dbCursor={}
         return ptr,record
 
     # Find offset in tombstone list
@@ -228,6 +312,8 @@ class JackrabbitDB:
         if not self.CheckTombstones(offset):
             # Processed, \n NOT included
             self.dbTombstones.append([offset,len(buf)+1])
+        # Reset cursors
+        self.dbCursor={}
         return True
 
     # Read a record at a position
@@ -503,7 +589,7 @@ class JackrabbitDB:
         fidx=self.dbIndex[idx].replace("|", ".")
         entries=FF.ReadFile2List(fidx,Unique=False)
         if not entries:
-            return
+            return -1
 
         # Build search key
         if "|" in idx:
@@ -512,7 +598,7 @@ class JackrabbitDB:
             target=str(record[idx])
 
         # Binary search on entries list (already sorted by Key)
-        lo, hi=0, len(entries) - 1
+        lo, hi=0, len(entries)-1
         while lo<=hi:
             mid=(lo+hi)//2
             kvtbl=json.loads(entries[mid])
@@ -564,6 +650,7 @@ def TestDB():
     db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File"])
 
     # Add files as data set
+    print("Add data")
     for file in os.listdir(dir):
         nr={}
         nr['ID']=CF.GetID(31,31)
@@ -588,7 +675,31 @@ def TestDB():
     db.AddIndex("File|ID")
     db.AddIndex("LastAccessed|File")
 
+    # Force set cursor
+    print("Cursor tests")
+    offset=db.SetCursor(cursor="File",pos=6)
+    record=db.Read(offset)
+    print(record)
+
+    # Get current cursor
+    pos,idx=db.GetCursor(cursor="File")
+    print("Cursor:",pos,idx)
+
+    # Binary index searching
+    key=record['ID']
+    result=db.BinaryIndexSearch("ID",record)
+    print("Binary Search:",result)
+
+    # Test Next and previous
+
+    print("Next/Previous tests")
+    nrec=db.Next("File")
+    print(nrec)
+    prec=db.Previous("File")
+    print(prec)
+
     # Find all records with "bash" and edit them
+    print("Edit tests")
     results=db.SearchContains("bash")
     if results:
         lu=[] # Searching multiple indexes can give duplicate offsets.
@@ -600,8 +711,8 @@ def TestDB():
                     record['EditCount']=record.get('EditCount',0)+1
                     ptr,newrec=db.Update(res['Offset'],record)
 
-    """
     # Find and delete all records with python in them
+    print("Delete tests")
     results=db.SearchContains("python")
     if results:
         lu=[]
@@ -610,8 +721,14 @@ def TestDB():
                 lu.append(res['Offset'])
                 if not db.Error:
                     done=db.Delete(res['Offset'])
-    #                print(done,res['Key'])
-    """
+                    print(done,res['Key'])
+
+    # Verify cursor reset, Will actualy be recrord 1, Next of current (0)
+    # from reset from modifications.
+
+    print("Cursor invalidation test")
+    nrec=db.Next("File")
+    print(nrec)
 
     # Remove additional indexes
     db.RemoveIndex("File|ID")
