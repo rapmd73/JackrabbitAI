@@ -23,7 +23,7 @@ import FileFunctions as FF
 # primary=(time.time()*10000000).GetID()
 
 class JackrabbitDB:
-    def __init__(self,name,idx=[],syncDB=True,syncIDX=False):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False):
         # Main database
         self.syncDB=syncDB
         self.syncIDX=syncIDX
@@ -34,13 +34,17 @@ class JackrabbitDB:
 
         # Create index table
         self.dbIndex={}
-        for i in idx:
-            self.dbIndex[i]=f"{self.dbDir}/Index.{i}.JIDX"
+        if idx:
+            for i in idx:
+                self.dbIndex[i]=f"{self.dbDir}/Index.{i}.JIDX"
 
         # Report errors, including duplicates
         self.Error=None
 
+        # Make database directory
         FF.mkdir(self.dbDir)
+
+        # Force rebuild the index files
         self.CheckIndexes(True)
 
     # Create a Blake hash. Argument is JSON. Test just incase JSONL is passed
@@ -113,6 +117,34 @@ class JackrabbitDB:
                 return True,offset
 
         return False,FF.GetFileSize(self.dbName)
+
+    # Add index file
+
+    def AddIndex(self,idx):
+        # Alread added, nothing to do.
+        if idx in self.dbIndex:
+            return False
+        # Register index path
+        self.dbIndex[idx]=f"{self.dbDir}/Index.{idx}.JIDX"
+        # Build index from existing data
+        self.RebuildIndex(idx)
+        if self.Error:
+            self.dbIndex.pop(idx,None)
+            return False
+        return True
+
+    # Remove an index after initialization
+
+    def RemoveIndex(self,idx,delete=False):
+        # Not in list, nothing to do
+        if idx not in self.dbIndex:
+            return False
+        fidx = self.dbIndex[idx].replace("|", ".")
+        if os.path.exists(fidx) and delete:
+            os.remove(fidx)
+        self.dbIndex.pop(idx,None)
+#        self._InvalidateCursor(idx)
+        return True
 
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
@@ -529,8 +561,8 @@ def TestDB():
         dir=sys.argv[1]
 
     # Create/Open database
-#    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File","File|ID","LastAccessed|File"])
-    db=JackrabbitDB("/tmp/FilesDB",idx=["ID"])
+    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File"])
+
     # Add files as data set
     for file in os.listdir(dir):
         nr={}
@@ -552,7 +584,10 @@ def TestDB():
         if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
 
-    """
+    # Add additional indexes
+    db.AddIndex("File|ID")
+    db.AddIndex("LastAccessed|File")
+
     # Find all records with "bash" and edit them
     results=db.SearchContains("bash")
     if results:
@@ -565,6 +600,7 @@ def TestDB():
                     record['EditCount']=record.get('EditCount',0)+1
                     ptr,newrec=db.Update(res['Offset'],record)
 
+    """
     # Find and delete all records with python in them
     results=db.SearchContains("python")
     if results:
@@ -576,6 +612,10 @@ def TestDB():
                     done=db.Delete(res['Offset'])
     #                print(done,res['Key'])
     """
+
+    # Remove additional indexes
+    db.RemoveIndex("File|ID")
+    db.RemoveIndex("LastAccessed|File")
 
     if not db.PackDatabase():
         print("Pack corruption.")
