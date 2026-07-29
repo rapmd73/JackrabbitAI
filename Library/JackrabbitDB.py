@@ -5,7 +5,8 @@
 # 2024-2026 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
 
-# This is an ISAM random access hybrid database using only JSONL structures.
+# Tamper-Evident Deterministic-Rebuild Append-Only JSONL ISAM with
+# Embedded Version History
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
@@ -648,7 +649,7 @@ def TestDB():
         dir=sys.argv[1]
 
     # Create/Open database
-    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File"])
+    db=JackrabbitDB("/tmp/FilesDB")
 
     # Add files as data set
     print("Add data")
@@ -673,6 +674,8 @@ def TestDB():
             print(f"{db.Error} {nr['File']}")
 
     # Add additional indexes
+    db.AddIndex("ID")
+    db.AddIndex("File")
     db.AddIndex("File|ID")
     db.AddIndex("LastAccessed|File")
 
@@ -735,6 +738,8 @@ def TestDB():
     print(nrec)
 
     # Remove additional indexes
+    db.RemoveIndex("ID")
+    db.RemoveIndex("File")
     db.RemoveIndex("File|ID")
     db.RemoveIndex("LastAccessed|File")
 
