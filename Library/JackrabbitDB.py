@@ -5,8 +5,12 @@
 # 2024-2026 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
 
-# Tamper-Evident Deterministic-Rebuild Append-Only JSONL ISAM with
-# Embedded Version History
+# JackrabbitDB is a reference implementation of a tamper-evident, reconstructable,
+# provenance-tracking data layer. Its design properties: append, only JSONL,
+# per-record Blake3, deterministic replay, explicit reconstruction markers, make
+# it technically suitable as a component in high-trust architectures. Formal
+# certification, regulatory assessment, and production hardening are the
+# responsibility of the integrating organization.
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
