@@ -13,7 +13,7 @@ import json
 import FileFunctions as FF
 import JackrabbitDB as JRDB
 
-def ReplayTransactions(tlog=None,dbdir=None,idx=None):
+def ReplayTransactions(tlog=None,dbdir=None,idx=None, olddb=None):
     # There are two ways to handle this...
 
     # First is to build an EXACT copy of the original. I reject this as there are
@@ -23,6 +23,10 @@ def ReplayTransactions(tlog=None,dbdir=None,idx=None):
     # RECONSTRUCTION. I think this is the better approach as its HONEST about the
     # data origin and expections. It also show clear and present transparency
     # about the process.
+
+    if tlog is None or dbdir is None or idx is None:
+        print("The transction log, new database and primary index are required.")
+        sys.exit(0)
 
     db=JRDB.JackrabbitDB(dbdir,idx=[idx],syncDB=False)
 
@@ -65,7 +69,49 @@ def ReplayTransactions(tlog=None,dbdir=None,idx=None):
                 print(f"Transaction ID NOT found: {id}")
     fh.close()
     db.PackDatabase()
-    print(db.VerifyDatabase())
+    print(f"Verification: {db.VerifyDatabase()}")
+    print()
+
+    # This section simulates a JDB from a previous backup and finding
+    # the missing records.
+
+    if olddb is None:
+        return
+
+    dbo=JRDB.JackrabbitDB(olddb,idx=[idx],syncDB=False)
+
+    db.SetCursor(idx,0)
+    dbo.SetCursor(idx,0)
+
+    # New to old check
+    while True:
+        nrec=db.Next(idx)
+        if not nrec:
+            break
+
+        offset=dbo.BinaryIndexSearch(idx,record=nrec)
+        orec=dbo.Read(offset)
+
+        if orec[idx]!=nrec[idx]:
+            print("O:",orec)
+            print("N:",nrec)
+
+    # Old to new check
+    while True:
+        orec=dbo.Next(idx)
+        if not orec:
+            break
+
+        offset=db.BinaryIndexSearch(idx,record=orec)
+        nrec=db.Read(offset)
+
+        if orec[idx]!=nrec[idx]:
+            print("O:",orec)
+            print("N:",nrec)
 
 if __name__ == "__main__":
-    ReplayTransactions(sys.argv[1],sys.argv[2],sys.argv[3])
+    args=[None] * 5
+    for i in range(len(sys.argv)):
+        args[i]=sys.argv[i]
+
+    ReplayTransactions(args[1],args[2],args[3],args[4])

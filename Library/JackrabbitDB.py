@@ -224,13 +224,16 @@ class JackrabbitDB:
 
     def Next(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
-        return self.Read(self.SetCursor(cursor,pos+1))
+        data=self.Read(pos)
+        self.SetCursor(cursor,pos+1)
+        return data
 
     # Get the previous record
 
     def Previous(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
-        return self.Read(self.SetCursor(cursor,pos-1))
+        data=self.Read(pos)
+        self.SetCursor(cursor,pos-1)
 
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
@@ -328,6 +331,8 @@ class JackrabbitDB:
         fh.seek(offset,os.SEEK_SET)
         line=fh.readline()
         fh.close()
+        if not line:
+            return None
         try:
             line=json.loads(line)
         except Exception as err:
