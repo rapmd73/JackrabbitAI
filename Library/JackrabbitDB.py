@@ -28,14 +28,15 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class JackrabbitDB:
-    def __init__(self,name,idx=None,syncDB=True,syncIDX=False):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=10):
         # Main database
         self.syncDB=syncDB
         self.syncIDX=syncIDX
         self.dbDir=name
         self.dbName=f"{self.dbDir}/Data.JDB"
         self.dbTransaction=f"{self.dbDir}/Transaction.log"
-        self.dbLock=w1=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=10,Retry=7)
+        self.expire=expire
+        self.dbLock=w1=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7)
         self.dbTombstones=[]
 
         # Create index table
@@ -55,6 +56,38 @@ class JackrabbitDB:
 
         # Force rebuild the index files
         self.CheckIndexes(True)
+
+    # Decorator for locking
+
+    @staticmethod
+    def AlwaysLock(func):
+        def wrapper(self, *args, **kwargs):
+            expire=getattr(self, 'expire', 10)  # Read at RUNTIME
+
+            # if its already locked, not the function responsible for the lock.
+            # Just run the function.
+
+            status=self.dbLock.IsLocked(expire=self.expire, acquire=False).lower()
+            if status=="locked":
+                return func(self, *args, **kwargs)
+
+            # If we are not the owner, we just wait our turn, break on any error.
+
+            while True:
+                status=self.dbLock.IsLocked(expire=self.expire, acquire=True).lower()
+                if status!='notowner':
+                    break
+                time.sleep(0.1) # sleep 1/10th second
+
+            if status!="locked":
+                self.Error=f"Lock failed: {status}"
+                raise Exception(self.Error)
+
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                self.dbLock.Unlock()
+        return wrapper
 
     # Create a Blake hash. Argument is JSON. Test just incase JSONL is passed
 
@@ -96,6 +129,7 @@ class JackrabbitDB:
 
     # Write out a transaction log
 
+    @AlwaysLock
     def WriteTransaction(self,cmd,data):
         if isinstance(data,dict):
             text=json.dumps(data)
@@ -107,6 +141,7 @@ class JackrabbitDB:
 
     # Recycle tombstones if possible.  Returns T/F,offset. True if recycled
 
+    @AlwaysLock
     def GetNextOffset(self, record):
         if isinstance(record, dict):
             rec=json.dumps(record)+'\n'
@@ -129,17 +164,16 @@ class JackrabbitDB:
 
     # Add index file
 
+    @AlwaysLock
     def AddIndex(self,idx):
         # Alread added, nothing to do.
         if idx in self.dbIndex:
             return False
 
-        self.dbLock.Lock(expire=10)
         # Register index path
         self.dbIndex[idx]=f"{self.dbDir}/Index.{idx}.JIDX"
         # Build index from existing data
         self.RebuildIndex(idx)
-        self.dbLock.Unlock()
         if self.Error:
             self.dbIndex.pop(idx,None)
             return False
@@ -147,22 +181,22 @@ class JackrabbitDB:
 
     # Remove an index after initialization
 
+    @AlwaysLock
     def RemoveIndex(self,idx,delete=False):
         # Not in list, nothing to do
         if idx not in self.dbIndex:
             return False
 
-        self.dbLock.Lock(expire=10)
         fidx = self.dbIndex[idx].replace("|", ".")
         if os.path.exists(fidx) and delete:
             os.remove(fidx)
         self.dbIndex.pop(idx,None)
         self.dbCursor.pop(idx,None)
-        self.dbLock.Unlock()
         return True
 
     # Reset cursor. 0 is start, -1 is end.
 
+    @AlwaysLock
     def SetCursor(self,cursor,pos=None):
         if cursor not in self.dbIndex:
             raise Exception('Index not loaded: cursor')
@@ -210,6 +244,7 @@ class JackrabbitDB:
 
     # Get cursor. Return both key and offset
 
+    @AlwaysLock
     def GetCursor(self,cursor):
         if cursor not in self.dbIndex:
             raise Exception('Index not loaded: cursor')
@@ -229,6 +264,7 @@ class JackrabbitDB:
 
     # Get the next record
 
+    @AlwaysLock
     def Next(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
         data=self.Read(pos)
@@ -237,6 +273,7 @@ class JackrabbitDB:
 
     # Get the previous record
 
+    @AlwaysLock
     def Previous(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
         data=self.Read(pos)
@@ -245,14 +282,13 @@ class JackrabbitDB:
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
 
+    @AlwaysLock
     def Add(self,record):
-        self.dbLock.Lock(expire=10)
         self.CheckIndexes()
         if self.Error:
             raise Exception(f"Index stability check failed: {self.Error}")
         self.CheckDuplicates(record)
         if self.Error:
-            self.dbLock.Unlock()
             return None, None
 
         record['jrdbAdded']=time.time()
@@ -270,15 +306,15 @@ class JackrabbitDB:
         self.UpdateIndexes(ptr,record)
         # Reset cursors
         self.dbCursor={}
-        self.dbLock.Unlock()
         return ptr,record
 
     # Update: append new record.  turn old record into tombstones.
+
+    @AlwaysLock
     def Update(self,offset,record):
         if record is None:
             return None, None
 
-        self.dbLock.Lock(expire=10)
         # Get versions and add to latest update
         oldrec=self.Read(offset)
         vers=oldrec.pop('jrdbVersions',[])
@@ -305,11 +341,11 @@ class JackrabbitDB:
         self.CheckIndexes()
         # Reset cursors
         self.dbCursor={}
-        self.dbLock.Unlock()
         return ptr,record
 
     # Find offset in tombstone list
 
+    @AlwaysLock
     def CheckTombstones(self,offset):
         for ts in self.dbTombstones:
             if offset==ts[0]:
@@ -317,16 +353,15 @@ class JackrabbitDB:
         return False
 
     # Delete a record
+    @AlwaysLock
     def Delete(self,offset=None):
         if not offset:
             return False
 
-        self.dbLock.Lock(expire=10)
         # Verify old record, boundary start/Blake3
         # This blocks random offset attacks or bad programming
         buf=self.Read(offset)
         if buf is None:
-            self.dbLock.Unlock()
             raise Exception(f"Record damaged as {offset}")
         buf=json.dumps(buf)  # STRIPS \n from count, which leave it in file
         self.WriteTransaction("DELETE",buf)
@@ -339,11 +374,12 @@ class JackrabbitDB:
             self.dbTombstones.append([offset,len(buf)+1])
         # Reset cursors
         self.dbCursor={}
-        self.dbLock.Unlock()
         return True
 
     # Read a record at a position
+    @AlwaysLock
     def Read(self,offset):
+        self.dbLock.Lock(expire=self.expire)
         fh=open(self.dbName,"rb")
         fh.seek(offset,os.SEEK_SET)
         line=fh.readline()
@@ -362,22 +398,15 @@ class JackrabbitDB:
 
     # Actually update ALL index files.
 
+    @AlwaysLock
     def UpdateIndexes(self,ptr,record):
-        # If already locked, do NOT unlock it
-        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
-        self.dbLock.Lock(expire=10)
         self.Error=None
         # We need to walk every index file
         for idx in self.dbIndex.keys():
             self.UpdateSingleIndex(idx,ptr,record)
-        if not NoUnlock:
-            self.dbLock.Unlock()
 
+    @AlwaysLock
     def UpdateSingleIndex(self,idx,ptr,record):
-        # If already locked, do NOT unlock it
-        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
-        self.dbLock.Lock(expire=10)
-
         kvtbl={}
         fidx=self.dbIndex[idx].replace("|",".")
         if not os.path.exists(fidx):
@@ -389,8 +418,6 @@ class JackrabbitDB:
                 kvtbl={ "Key":record[idx], "Offset":ptr }
             entries=[ json.dumps(kvtbl) ]
             FF.WriteList2File(fidx,entries,sync=self.syncIDX)
-            if not NoUnlock:
-                self.dbLock.Unlock()
             return
 
         entries=FF.ReadFile2List(fidx,Unique=False)
@@ -404,13 +431,13 @@ class JackrabbitDB:
         entries.append(json.dumps(kvtbl))
         entries=self.SortIndex(entries)
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
-        if not NoUnlock:
-            self.dbLock.Unlock()
 
+    @AlwaysLock
     def SortIndex(self,entries):
         ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
         return ne
 
+    @AlwaysLock
     def CheckDuplicates(self,record):
         self.Error=None
         dup=False
@@ -426,14 +453,12 @@ class JackrabbitDB:
 
     # Check Index age and force a rebuild if needed
 
+    @AlwaysLock
     def CheckIndexes(self,force=False):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return
 
-        # If already locked, do NOT unlock it
-        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
-        self.dbLock.Lock(expire=10)
         # Check the indexes
         self.Error=None
         dbMtime=os.path.getmtime(self.dbName)
@@ -441,24 +466,22 @@ class JackrabbitDB:
         for idx in self.dbIndex.keys():
             fidx=self.dbIndex[idx].replace("|",".")
             if os.path.exists(fidx) or force:
-                iMtime=os.path.getmtime(fidx)
+                iMtime=0
+                if not force:
+                    iMtime=os.path.getmtime(fidx)
                 if iMtime<dbMtime:
                     self.RebuildIndex(idx)
             else:
                 self.RebuildIndex(idx)
-        if not NoUnlock:
-            self.dbLock.Unlock()
 
     # Rebuild a single index
 
+    @AlwaysLock
     def RebuildIndex(self,idx):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return
 
-        # If already locked, do NOT unlock it
-        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
-        self.dbLock.Lock(expire=10)
         # Force rebuild
         self.Error=None
         self.dbTombstones=[]
@@ -493,8 +516,6 @@ class JackrabbitDB:
 
             if not self.VerifyBlake(record):
                 self.Error=f"DB Corruption: {bline.strip()}"
-                if not NoUnlock:
-                    self.dbLock.Unlock()
                 raise Exception(self.Error)
 
             kvtbl={}
@@ -511,11 +532,10 @@ class JackrabbitDB:
         entries=self.SortIndex(entries)
         fidx=self.dbIndex[idx].replace("|",".")
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
-        if not NoUnlock:
-            self.dbLock.Unlock()
 
     # Verify the integrity of the database
 
+    @AlwaysLock
     def VerifyDatabase(self):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
@@ -550,6 +570,7 @@ class JackrabbitDB:
             if not self.VerifyBlake(record):
                 self.Error="Corruption"
                 print(f"Corruption: {bline.decode('utf-8')}")
+                raise Exception("Database curruption")
         fh.close()
 
         if not self.Error:
@@ -558,14 +579,12 @@ class JackrabbitDB:
 
     # Pack the database, remove tombstones
 
+    @AlwaysLock
     def PackDatabase(self):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return False
 
-        # If already locked, do NOT unlock it
-        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
-        self.dbLock.Lock(expire=10)
         # Make sure the work file does NOT exist
         packName=(f"{self.dbName}.packwork")
         if os.path.exists(packName):
@@ -597,7 +616,7 @@ class JackrabbitDB:
 
             if not self.VerifyBlake(record):
                 self.Error="Corruption"
-                print(f"Corruption: {bline.decode('utf-8')}")
+                raise Exception(f"Corruption: {bline.decode('utf-8')}")
 
             # WWrite out the new record
             FF.AppendFile(packName,json.dumps(record)+'\n',sync=self.syncDB)
@@ -608,15 +627,13 @@ class JackrabbitDB:
             os.replace(packName,self.dbName)
         except Exception as err:
             self.Error="Pack Failure"
-
-        if not NoUnlock:
-            self.dbLock.Unlock()
         if self.Error:
             return False
         return True
 
     # Linear (brute force) search
 
+    @AlwaysLock
     def LinearIndexSearch(self,idx,record):
         # Index: { "Key":"/bin/bash", "Offset":"123" }
         # Read the actual index into a list
@@ -643,6 +660,7 @@ class JackrabbitDB:
 
     # Binary search.  Really nice is index is already sorted.
 
+    @AlwaysLock
     def BinaryIndexSearch(self, idx, record):
         fidx=self.dbIndex[idx].replace("|", ".")
         entries=FF.ReadFile2List(fidx,Unique=False)
@@ -671,6 +689,7 @@ class JackrabbitDB:
 
     # Blind search for a string in all indexes
 
+    @AlwaysLock
     def SearchContains(self,srch):
         self.Error=None
         results=[]
@@ -705,7 +724,7 @@ def TestDB():
         dir=sys.argv[1]
 
     # Create/Open database
-    db=JackrabbitDB("/tmp/FilesDB")
+    db=JackrabbitDB("/tmp/FilesDB",idx=['ID'])
 
     # Add files as data set
     print("Add data")
@@ -804,7 +823,7 @@ def TestDB():
 #    if not db.PackDatabase():
 #        print("Pack corruption.")
     if not db.VerifyDatabase():
-        print("Database corruption.")
+        print("Verification FAILED: Database corruption.")
 
 if __name__=="__main__":
     TestDB()
