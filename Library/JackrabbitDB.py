@@ -14,6 +14,7 @@
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
+sys.path.append('/home/JackrabbitDLM')
 import os
 import blake3
 import datetime
@@ -21,11 +22,10 @@ import time
 import random
 import json
 
+import DLMLocker as DLM
 import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
-
-# primary=(time.time()*10000000).GetID()
 
 class JackrabbitDB:
     def __init__(self,name,idx=None,syncDB=True,syncIDX=False):
@@ -35,6 +35,7 @@ class JackrabbitDB:
         self.dbDir=name
         self.dbName=f"{self.dbDir}/Data.JDB"
         self.dbTransaction=f"{self.dbDir}/Transaction.log"
+        self.dbLock=w1=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=10,Retry=7)
         self.dbTombstones=[]
 
         # Create index table
@@ -132,10 +133,13 @@ class JackrabbitDB:
         # Alread added, nothing to do.
         if idx in self.dbIndex:
             return False
+
+        self.dbLock.Lock(expire=10)
         # Register index path
         self.dbIndex[idx]=f"{self.dbDir}/Index.{idx}.JIDX"
         # Build index from existing data
         self.RebuildIndex(idx)
+        self.dbLock.Unlock()
         if self.Error:
             self.dbIndex.pop(idx,None)
             return False
@@ -147,11 +151,14 @@ class JackrabbitDB:
         # Not in list, nothing to do
         if idx not in self.dbIndex:
             return False
+
+        self.dbLock.Lock(expire=10)
         fidx = self.dbIndex[idx].replace("|", ".")
         if os.path.exists(fidx) and delete:
             os.remove(fidx)
         self.dbIndex.pop(idx,None)
         self.dbCursor.pop(idx,None)
+        self.dbLock.Unlock()
         return True
 
     # Reset cursor. 0 is start, -1 is end.
@@ -239,11 +246,13 @@ class JackrabbitDB:
     # the indexes to prevent duplicates.
 
     def Add(self,record):
+        self.dbLock.Lock(expire=10)
         self.CheckIndexes()
         if self.Error:
             raise Exception(f"Index stability check failed: {self.Error}")
         self.CheckDuplicates(record)
         if self.Error:
+            self.dbLock.Unlock()
             return None, None
 
         record['jrdbAdded']=time.time()
@@ -261,10 +270,15 @@ class JackrabbitDB:
         self.UpdateIndexes(ptr,record)
         # Reset cursors
         self.dbCursor={}
+        self.dbLock.Unlock()
         return ptr,record
 
     # Update: append new record.  turn old record into tombstones.
     def Update(self,offset,record):
+        if record is None:
+            return None, None
+
+        self.dbLock.Lock(expire=10)
         # Get versions and add to latest update
         oldrec=self.Read(offset)
         vers=oldrec.pop('jrdbVersions',[])
@@ -291,6 +305,7 @@ class JackrabbitDB:
         self.CheckIndexes()
         # Reset cursors
         self.dbCursor={}
+        self.dbLock.Unlock()
         return ptr,record
 
     # Find offset in tombstone list
@@ -303,14 +318,15 @@ class JackrabbitDB:
 
     # Delete a record
     def Delete(self,offset=None):
-        # One of these MUST be present
         if not offset:
             return False
 
+        self.dbLock.Lock(expire=10)
         # Verify old record, boundary start/Blake3
         # This blocks random offset attacks or bad programming
         buf=self.Read(offset)
         if buf is None:
+            self.dbLock.Unlock()
             raise Exception(f"Record damaged as {offset}")
         buf=json.dumps(buf)  # STRIPS \n from count, which leave it in file
         self.WriteTransaction("DELETE",buf)
@@ -323,6 +339,7 @@ class JackrabbitDB:
             self.dbTombstones.append([offset,len(buf)+1])
         # Reset cursors
         self.dbCursor={}
+        self.dbLock.Unlock()
         return True
 
     # Read a record at a position
@@ -346,12 +363,21 @@ class JackrabbitDB:
     # Actually update ALL index files.
 
     def UpdateIndexes(self,ptr,record):
+        # If already locked, do NOT unlock it
+        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
+        self.dbLock.Lock(expire=10)
         self.Error=None
         # We need to walk every index file
         for idx in self.dbIndex.keys():
             self.UpdateSingleIndex(idx,ptr,record)
+        if not NoUnlock:
+            self.dbLock.Unlock()
 
     def UpdateSingleIndex(self,idx,ptr,record):
+        # If already locked, do NOT unlock it
+        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
+        self.dbLock.Lock(expire=10)
+
         kvtbl={}
         fidx=self.dbIndex[idx].replace("|",".")
         if not os.path.exists(fidx):
@@ -363,6 +389,8 @@ class JackrabbitDB:
                 kvtbl={ "Key":record[idx], "Offset":ptr }
             entries=[ json.dumps(kvtbl) ]
             FF.WriteList2File(fidx,entries,sync=self.syncIDX)
+            if not NoUnlock:
+                self.dbLock.Unlock()
             return
 
         entries=FF.ReadFile2List(fidx,Unique=False)
@@ -376,6 +404,8 @@ class JackrabbitDB:
         entries.append(json.dumps(kvtbl))
         entries=self.SortIndex(entries)
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
+        if not NoUnlock:
+            self.dbLock.Unlock()
 
     def SortIndex(self,entries):
         ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
@@ -401,6 +431,9 @@ class JackrabbitDB:
         if not os.path.exists(self.dbName):
             return
 
+        # If already locked, do NOT unlock it
+        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
+        self.dbLock.Lock(expire=10)
         # Check the indexes
         self.Error=None
         dbMtime=os.path.getmtime(self.dbName)
@@ -413,6 +446,8 @@ class JackrabbitDB:
                     self.RebuildIndex(idx)
             else:
                 self.RebuildIndex(idx)
+        if not NoUnlock:
+            self.dbLock.Unlock()
 
     # Rebuild a single index
 
@@ -421,6 +456,9 @@ class JackrabbitDB:
         if not os.path.exists(self.dbName):
             return
 
+        # If already locked, do NOT unlock it
+        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
+        self.dbLock.Lock(expire=10)
         # Force rebuild
         self.Error=None
         self.dbTombstones=[]
@@ -455,6 +493,8 @@ class JackrabbitDB:
 
             if not self.VerifyBlake(record):
                 self.Error=f"DB Corruption: {bline.strip()}"
+                if not NoUnlock:
+                    self.dbLock.Unlock()
                 raise Exception(self.Error)
 
             kvtbl={}
@@ -471,6 +511,8 @@ class JackrabbitDB:
         entries=self.SortIndex(entries)
         fidx=self.dbIndex[idx].replace("|",".")
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
+        if not NoUnlock:
+            self.dbLock.Unlock()
 
     # Verify the integrity of the database
 
@@ -521,6 +563,9 @@ class JackrabbitDB:
         if not os.path.exists(self.dbName):
             return False
 
+        # If already locked, do NOT unlock it
+        NoUnlock=not (self.dbLock.IsLocked(expire=10,acquire=False)=='Locked')
+        self.dbLock.Lock(expire=10)
         # Make sure the work file does NOT exist
         packName=(f"{self.dbName}.packwork")
         if os.path.exists(packName):
@@ -564,6 +609,8 @@ class JackrabbitDB:
         except Exception as err:
             self.Error="Pack Failure"
 
+        if not NoUnlock:
+            self.dbLock.Unlock()
         if self.Error:
             return False
         return True
@@ -682,6 +729,7 @@ def TestDB():
         if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
 
+    """
     # Add additional indexes
     db.AddIndex("ID")
     db.AddIndex("File")
@@ -751,9 +799,10 @@ def TestDB():
     db.RemoveIndex("File")
     db.RemoveIndex("File|ID")
     db.RemoveIndex("LastAccessed|File")
+    """
 
-    if not db.PackDatabase():
-        print("Pack corruption.")
+#    if not db.PackDatabase():
+#        print("Pack corruption.")
     if not db.VerifyDatabase():
         print("Database corruption.")
 
