@@ -175,7 +175,7 @@ class JackrabbitDB:
         # Build index from existing data
         self.RebuildIndex(idx)
         if self.Error:
-            self.dbIndex.pop(idx,None)
+            self.RemoveIndex(idx)
             return False
         return True
 
@@ -251,11 +251,12 @@ class JackrabbitDB:
 
         # Cursor not initialized
         if cursor not in self.dbCursor:
-            pos=0
-            fidx=self.dbIndex[cursor].replace("|",".")
-            idxMtime=os.path.getmtime(fidx)
-            entries=FF.ReadFile2List(fidx,Unique=False)
-            self.dbCursor[cursor]={ "Position":pos, "idxMtime":idxMtime, "Entries":entries }
+            offset=self.SetCursor(cursor,0)
+
+        # Check staleness
+        fidx = self.dbIndex[cursor].replace("|", ".")
+        if self.dbCursor[cursor]['idxMtime']<os.path.getmtime(fidx):
+            self.SetCursor(cursor,0)
 
         pos=self.dbCursor[cursor]["Position"]
         idx=self.dbCursor[cursor]["Entries"][pos]
@@ -267,8 +268,8 @@ class JackrabbitDB:
     @AlwaysLock
     def Next(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
-        data=self.Read(pos)
-        self.SetCursor(cursor,pos+1)
+        offset=self.SetCursor(cursor,pos+1)
+        data=self.Read(offset)
         return data
 
     # Get the previous record
@@ -276,8 +277,10 @@ class JackrabbitDB:
     @AlwaysLock
     def Previous(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
-        data=self.Read(pos)
-        self.SetCursor(cursor,pos-1)
+        offset=self.SetCursor(cursor,pos-1)
+        print(pos,offset)
+        data=self.Read(offset)
+        return data
 
     # Add a record to the database.  This also has to deal with all of
     # the indexes to prevent duplicates.
@@ -510,14 +513,6 @@ class JackrabbitDB:
                 print(bline)
                 continue
 
-            # Verify record integrity. Required to mintain a full "NO
-            # TRUST" environment. There is a price to pay in latency and
-            # overhead.
-
-            if not self.VerifyBlake(record):
-                self.Error=f"DB Corruption: {bline.strip()}"
-                raise Exception(self.Error)
-
             kvtbl={}
             # Add new or overwrite old
             if "|" in idx:
@@ -724,7 +719,7 @@ def TestDB():
         dir=sys.argv[1]
 
     # Create/Open database
-    db=JackrabbitDB("/tmp/FilesDB",idx=['ID'])
+    db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File"])
 
     # Add files as data set
     print("Add data")
@@ -748,13 +743,11 @@ def TestDB():
         if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
 
-    """
     # Add additional indexes
-    db.AddIndex("ID")
-    db.AddIndex("File")
     db.AddIndex("File|ID")
     db.AddIndex("LastAccessed|File")
 
+    """
     # Force set cursor
     print("Cursor tests")
     offset=db.SetCursor(cursor="File",pos=6)
@@ -772,15 +765,17 @@ def TestDB():
     key=record['ID']
     result=db.BinaryIndexSearch("ID",record)
     print("Binary Search:",result)
+    """
 
     # Test Next and previous
 
     print("Next/Previous tests")
     nrec=db.Next("File")
-    print(nrec)
+    print("N:",nrec)
     prec=db.Previous("File")
-    print(prec)
+    print("P:",prec)
 
+    """
     # Find all records with "bash" and edit them
     print("Edit tests")
     results=db.SearchContains("bash")
@@ -812,16 +807,16 @@ def TestDB():
     print("Cursor invalidation test")
     nrec=db.Next("File")
     print(nrec)
+    """
 
     # Remove additional indexes
     db.RemoveIndex("ID")
     db.RemoveIndex("File")
     db.RemoveIndex("File|ID")
     db.RemoveIndex("LastAccessed|File")
-    """
 
-#    if not db.PackDatabase():
-#        print("Pack corruption.")
+    if not db.PackDatabase():
+        print("Pack corruption.")
     if not db.VerifyDatabase():
         print("Verification FAILED: Database corruption.")
 
