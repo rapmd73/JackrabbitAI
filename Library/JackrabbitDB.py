@@ -278,7 +278,6 @@ class JackrabbitDB:
     def Previous(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
         offset=self.SetCursor(cursor,pos-1)
-        print(pos,offset)
         data=self.Read(offset)
         return data
 
@@ -747,7 +746,6 @@ def TestDB():
     db.AddIndex("File|ID")
     db.AddIndex("LastAccessed|File")
 
-    """
     # Force set cursor
     print("Cursor tests")
     offset=db.SetCursor(cursor="File",pos=6)
@@ -765,7 +763,6 @@ def TestDB():
     key=record['ID']
     result=db.BinaryIndexSearch("ID",record)
     print("Binary Search:",result)
-    """
 
     # Test Next and previous
 
@@ -775,7 +772,6 @@ def TestDB():
     prec=db.Previous("File")
     print("P:",prec)
 
-    """
     # Find all records with "bash" and edit them
     print("Edit tests")
     results=db.SearchContains("bash")
@@ -806,8 +802,7 @@ def TestDB():
 
     print("Cursor invalidation test")
     nrec=db.Next("File")
-    print(nrec)
-    """
+    print("CIT:",nrec)
 
     # Remove additional indexes
     db.RemoveIndex("ID")
