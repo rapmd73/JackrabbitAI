@@ -183,6 +183,8 @@ def detect_nonsilent(audio_array, sr, silence_thresh_db=-40.0, min_silence_len_m
 
 def remove_silence(video_path, output_path, absolute_thresh_db=-40.0, min_silence_len_ms=800, padding_ms=150):
     video=VideoFileClip(video_path)
+    fps=video.reader.fps
+
     audio=video.audio.to_soundarray(fps=44100)
     sr=44100
 
@@ -205,8 +207,8 @@ def remove_silence(video_path, output_path, absolute_thresh_db=-40.0, min_silenc
             print(f"  {seg[0]:.2f} – {seg[1]:.2f}")
 
         clips=[video.subclipped(start, end) for start, end in nonsilent]
-        final=concatenate_videoclips(clips)
-        final.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        final=concatenate_videoclips(clips,method="compose")
+        final.write_videofile(output_path, fps=fps, codec="libx264", audio_codec="aac")
     else:
         print("No non-silent sections detected.")
 

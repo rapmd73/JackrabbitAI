@@ -32,11 +32,14 @@ class JackrabbitDB:
         # Main database
         self.syncDB=syncDB
         self.syncIDX=syncIDX
+        # Name of database becomes the directory name on disk
         self.dbDir=name
         self.dbName=f"{self.dbDir}/Data.JDB"
         self.dbTransaction=f"{self.dbDir}/Transaction.log"
+        # locks have auto expire
         self.expire=expire
         self.dbLock=w1=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7)
+        # deleted records, time outs.
         self.dbTombstones=[]
 
         # Create index table
