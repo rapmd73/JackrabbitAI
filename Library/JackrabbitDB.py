@@ -412,6 +412,22 @@ class JackrabbitDB:
 
     @AlwaysLock
     def UpdateSingleIndex(self,idx,ptr,record):
+        for k in idx.split("|"):
+            if k not in record:
+                return
+
+        fidx = self.dbIndex[idx].replace("|", ".")
+        if not os.path.exists(fidx):
+            entries = self.BuildIndexEntries(idx, record, ptr)
+            FF.WriteList2File(fidx, entries, sync=self.syncIDX)
+            return
+
+        entries = FF.ReadFile2List(fidx, Unique=False)
+        entries.extend(self.BuildIndexEntries(idx, record, ptr))
+        entries = self.SortIndex(entries)
+        FF.WriteList2File(fidx, entries, sync=self.syncIDX)
+
+        """
         kvtbl={}
         fidx=self.dbIndex[idx].replace("|",".")
         if not os.path.exists(fidx):
@@ -436,6 +452,49 @@ class JackrabbitDB:
         entries.append(json.dumps(kvtbl))
         entries=self.SortIndex(entries)
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
+        """
+
+    # Internal function to split lists into indexable elements.
+    # An example would be { "Keywords": [Word1, word2] }
+    # AlwaysLock, in this case, just serves to reset the lock timeout
+
+    @AlwaysLock
+    def BuildIndexEntries(self, idx, record, ptr):
+        entries = []
+        if "|" in idx:
+            # Compound index: expand any list fields into multiple entries (cartesian product)
+            parts = idx.split('|')
+            value_lists = []
+            for part in parts:
+                raw = record.get(part)
+                if isinstance(raw, list):
+                    value_lists.append([str(v) for v in raw])
+                elif raw is not None:
+                    value_lists.append([str(raw)])
+                else:
+                    value_lists.append([""])
+
+            # Compound list, a list of lists
+            combos = [[]]
+            for vl in value_lists:
+                new_combos = []
+                for prefix in combos:
+                    for v in vl:
+                        new_combos.append(prefix + [v])
+                combos = new_combos
+
+            # Build the index framing
+            for combo in combos:
+                val = "|".join(combo)
+                entries.append(json.dumps({"Key": val, "Offset": ptr}))
+        else:
+            raw = record.get(idx)
+            if isinstance(raw, list):
+                for elem in raw:
+                    entries.append(json.dumps({"Key": str(elem), "Offset": ptr}))
+            elif raw is not None:
+                entries.append(json.dumps({"Key": raw, "Offset": ptr}))
+        return entries
 
     @AlwaysLock
     def SortIndex(self,entries):
@@ -448,6 +507,14 @@ class JackrabbitDB:
         dup=False
         # We need to walk every index file
         for idx in self.dbIndex.keys():
+            # Skip missing keys
+            nf=False
+            for k in idx.split("|"):
+                if k not in record:
+                    nf=True
+            if nf:
+                continue
+            # Find the proper offset
             fidx=self.dbIndex[idx].replace("|",".")
             if os.path.exists(fidx):
                 result=self.BinaryIndexSearch(idx,record)
@@ -483,6 +550,56 @@ class JackrabbitDB:
 
     @AlwaysLock
     def RebuildIndex(self,idx):
+        # No DB, nothing to check.
+        if not os.path.exists(self.dbName):
+            return
+
+        # Force rebuild
+        self.Error = None
+        self.dbTombstones = []
+        entries = []
+        ptr = 0
+        fh = open(self.dbName, "rb")
+        while True:
+            bline = fh.readline()
+            # No more data
+            if not bline:
+                break
+            # Tombstone record
+            if not bline.startswith(b'{'):
+                # Add to tombstone registry
+                if not self.CheckTombstones(ptr):
+                    # This is RAW line, \n included
+                    self.dbTombstones.append([ptr, len(bline)])
+                ptr += len(bline)
+                continue
+
+            try:
+                record = json.loads(bline)
+            except Exception as err:
+                ptr += len(bline)
+                print("REBUILD JSON:", err)
+                print(bline)
+                continue
+
+            # If a key is NOT actually in the record, skip this record.
+            nf=False
+            for k in idx.split("|"):
+                if k not in record:
+                    nf=True
+            if nf==True:
+                continue
+
+            # Use shared helper — expands lists, handles compound, skips None
+            entries.extend(self.BuildIndexEntries(idx, record, ptr))
+            ptr += len(bline)
+        fh.close()
+
+        entries = self.SortIndex(entries)
+        fidx = self.dbIndex[idx].replace("|", ".")
+        FF.WriteList2File(fidx, entries, sync=self.syncIDX)
+
+        """
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return
@@ -529,6 +646,7 @@ class JackrabbitDB:
         entries=self.SortIndex(entries)
         fidx=self.dbIndex[idx].replace("|",".")
         FF.WriteList2File(fidx,entries,sync=self.syncIDX)
+        """
 
     # Verify the integrity of the database
 
