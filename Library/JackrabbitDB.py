@@ -773,6 +773,28 @@ class JackrabbitDB:
                 return kvtbl['Offset']
         return None
 
+    # Search inde records text ANYWHRE in the index key: search bash,
+    # finds rbash.
+
+    @AlwaysLock
+    def LinearContainsSearch(self, idx, substr):
+        fidx = self.dbIndex[idx].replace("|", ".")
+        if not os.path.exists(fidx):
+            return None
+        entries = FF.ReadFile2List(fidx, Unique=False)
+        if not entries:
+            return None
+
+        results = []
+        for line in entries:
+            try:
+                kv = json.loads(line)
+            except Exception:
+                continue
+            if substr in kv['Key']:
+                results.append(kv['Offset'])
+        return results
+
     # Binary search.  Really nice is index is already sorted.
 
     @AlwaysLock
@@ -801,6 +823,41 @@ class JackrabbitDB:
             else:
                 hi=mid-1
         return None
+
+    # Search a binary index for a prefix. Indexes MUST be unique, but
+    # some thing might bot be, like filename or keyword.
+
+    @AlwaysLock
+    def BinaryPrefixSearch(self, idx, prefix):
+        # Find ALL entries where Key starts with prefix.
+        # idx = "Keywords|ID", prefix = "bombs|"
+        # Returns list of offsets (may be empty).
+
+        fidx = self.dbIndex[idx].replace("|", ".")
+        entries = FF.ReadFile2List(fidx, Unique=False)
+        if not entries:
+            return None
+
+        # Binary search for LEFTMOST entry >= prefix
+        target = prefix
+        lo, hi = 0, len(entries) - 1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            key = json.loads(entries[mid])['Key']
+            if key >= target:
+                hi = mid - 1
+            else:
+                lo = mid + 1
+
+        # lo = first entry >= prefix. Scan forward while prefix matches.
+        results = []
+        for i in range(lo, len(entries)):
+            kv = json.loads(entries[i])
+            if kv['Key'].startswith(prefix):
+                results.append(kv['Offset'])
+            else:
+                break
+        return results
 
     # Blind search for a string in all indexes
 
@@ -847,6 +904,7 @@ def TestDB():
         nr={}
         nr['ID']=CF.GetID(31,31)
         nr['File']=os.path.abspath(f"{dir}/{file}")
+        nr['Filename']=f"{file}"
         nr['RealFile']=os.path.realpath(f"{dir}/{file}")
         nr['LastAccessed']=os.path.getatime(f"{dir}/{file}")
         if os.path.isdir(nr['File']):
@@ -865,6 +923,7 @@ def TestDB():
 
     # Add additional indexes
     db.AddIndex("File|ID")
+    db.AddIndex("Filename|ID")
     db.AddIndex("LastAccessed|File")
 
     # Force set cursor
@@ -872,6 +931,8 @@ def TestDB():
     offset=db.SetCursor(cursor="File",pos=6)
     record=db.Read(offset)
     print(record)
+
+    """
     offset=db.SetCursor(cursor="File",pos=-3)
     record=db.Read(offset)
     print(record)
@@ -879,19 +940,28 @@ def TestDB():
     # Get current cursor
     pos,idx=db.GetCursor(cursor="File")
     print("Cursor:",pos,idx)
+    """
 
     # Binary index searching
     key=record['ID']
     result=db.BinaryIndexSearch("ID",record)
-    print("Binary Search:",result)
+    print("Binary Index Search:",result)
 
+    # Binary prefix searching
+    result=db.LinearContainsSearch("Filename|ID","bash")
+    print("Linear Contains Search:",result)
+    for offset in result:
+        record=db.Read(offset)
+        print(record)
+
+    """
     # Test Next and previous
-
     print("Next/Previous tests")
     nrec=db.Next("File")
     print("N:",nrec)
     prec=db.Previous("File")
     print("P:",prec)
+    """
 
     # Find all records with "bash" and edit them
     print("Edit tests")
@@ -906,6 +976,7 @@ def TestDB():
                     record['EditCount']=record.get('EditCount',0)+1
                     ptr,newrec=db.Update(res['Offset'],record)
 
+    """
     # Find and delete all records with python in them
     print("Delete tests")
     results=db.SearchContains("python")
@@ -917,17 +988,18 @@ def TestDB():
                 if not db.Error:
                     done=db.Delete(res['Offset'])
                     print(done,res['Key'])
-
     # Verify cursor reset, Will actualy be recrord 1, Next of current (0)
     # from reset from modifications.
 
     print("Cursor invalidation test")
     nrec=db.Next("File")
     print("CIT:",nrec)
+    """
 
     # Remove additional indexes
     db.RemoveIndex("ID")
     db.RemoveIndex("File")
+    db.RemoveIndex("Filename|ID")
     db.RemoveIndex("File|ID")
     db.RemoveIndex("LastAccessed|File")
 
