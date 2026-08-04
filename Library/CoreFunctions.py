@@ -69,6 +69,7 @@ import datetime
 import time
 import random
 import json
+import unidecode
 import string
 import re
 
@@ -90,16 +91,12 @@ TokenStorage='/home/JackrabbitAI/Tokens'
 MasterNice=os.getpriority(os.PRIO_PROCESS,0)
 
 # The `DecodeUnicode` function takes a string input `text` and replaces various
-# Unicode characters with their corresponding ASCII equivalents. It uses a
-# dictionary `replacements` to map Unicode characters, such as left and right
-# single quotation marks, double quotation marks, en dashes, em dashes,
-# ellipsis, and non-breaking spaces, to their ASCII counterparts. The function
-# iterates through this dictionary, replacing each occurrence of the specified
-# Unicode characters in the input text with the corresponding ASCII character,
-# ultimately returning the modified string with all replacements made.
+# Unicode characters with their corresponding ASCII equivalents.
 
 @DF.function_trapper('')
 def DecodeUnicode(text):
+    return unidecode.unidecode(text)
+    """
     replacements = {
         '\u2018': "'",   # Left single quotation mark
         '\u2019': "'",   # Right single quotation mark
@@ -121,6 +118,7 @@ def DecodeUnicode(text):
     for unicode_char, ascii_char in replacements.items():
         text = text.replace(unicode_char, ascii_char)
     return text
+    """
 
 # The `Yesterday` function calculates and returns the date of yesterday in the
 # format 'YYYY-MM-DD'. It takes an optional parameter `ds` which, if provided,
@@ -296,6 +294,11 @@ def NumberOnly(s):
         return True
 
     return False
+
+# Is there a digit in the string? strictly convience
+
+def AnyDigit(text):
+    return any(char.isdigit() for char in text)
 
 # The `StripPunctuation` function removes all punctuation and high ASCII
 # characters from a given text by replacing them with spaces. It achieves
