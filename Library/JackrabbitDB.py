@@ -521,7 +521,8 @@ class JackrabbitDB:
                 # We have a duplicate
                 if result is not None:
                     self.Error="Duplicate"
-                    return
+                    return True
+        return False
 
     # Check Index age and force a rebuild if needed
 
