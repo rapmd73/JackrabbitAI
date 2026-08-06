@@ -376,6 +376,8 @@ class JackrabbitDB:
         if not self.CheckTombstones(offset):
             # Processed, \n NOT included
             self.dbTombstones.append([offset,len(buf)+1])
+        # Rebuild indexes
+        self.CheckIndexes()
         # Reset cursors
         self.dbCursor={}
         return True
