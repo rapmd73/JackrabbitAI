@@ -292,8 +292,7 @@ class JackrabbitDB:
         self.CheckIndexes()
         if self.Error:
             raise Exception(f"Index stability check failed: {self.Error}")
-        self.CheckDuplicates(record)
-        if self.Error:
+        if self.CheckDuplicates(record):
             return None, None
 
         record['jrdbAdded']=time.time()
@@ -412,10 +411,6 @@ class JackrabbitDB:
 
     @AlwaysLock
     def UpdateSingleIndex(self,idx,ptr,record):
-        for k in idx.split("|"):
-            if k not in record:
-                return
-
         fidx = self.dbIndex[idx].replace("|", ".")
         if not os.path.exists(fidx):
             entries = self.BuildIndexEntries(idx, record, ptr)
@@ -423,36 +418,11 @@ class JackrabbitDB:
             return
 
         entries = FF.ReadFile2List(fidx, Unique=False)
-        entries.extend(self.BuildIndexEntries(idx, record, ptr))
-        entries = self.SortIndex(entries)
-        FF.WriteList2File(fidx, entries, sync=self.syncIDX)
-
-        """
-        kvtbl={}
-        fidx=self.dbIndex[idx].replace("|",".")
-        if not os.path.exists(fidx):
-            # Add new or overwrite old
-            if "|" in idx:
-                val="|".join(str(record[k]) for k in idx.split('|'))
-                kvtbl={ "Key":val, "Offset":ptr }
-            else:
-                kvtbl={ "Key":record[idx], "Offset":ptr }
-            entries=[ json.dumps(kvtbl) ]
-            FF.WriteList2File(fidx,entries,sync=self.syncIDX)
-            return
-
-        entries=FF.ReadFile2List(fidx,Unique=False)
-        kvtbl={}
-        # Add new or overwrite old
-        if "|" in idx:
-            val="|".join(str(record[k]) for k in idx.split('|'))
-            kvtbl={ "Key":val, "Offset":ptr }
-        else:
-            kvtbl={ "Key":record[idx], "Offset":ptr }
-        entries.append(json.dumps(kvtbl))
-        entries=self.SortIndex(entries)
-        FF.WriteList2File(fidx,entries,sync=self.syncIDX)
-        """
+        newentries=self.BuildIndexEntries(idx, record, ptr)
+        if newentries!=[]:
+            entries.extend(newentries)
+            entries = self.SortIndex(entries)
+            FF.WriteList2File(fidx, entries, sync=self.syncIDX)
 
     # Internal function to split lists into indexable elements.
     # An example would be { "Keywords": [Word1, word2] }
@@ -472,7 +442,7 @@ class JackrabbitDB:
                 elif raw is not None:
                     value_lists.append([str(raw)])
                 else:
-                    value_lists.append([""])
+                    return []
 
             # Compound list, a list of lists
             combos = [[]]
@@ -494,11 +464,14 @@ class JackrabbitDB:
                     entries.append(json.dumps({"Key": str(elem), "Offset": ptr}))
             elif raw is not None:
                 entries.append(json.dumps({"Key": raw, "Offset": ptr}))
+            else:
+                return []
         return entries
 
     @AlwaysLock
     def SortIndex(self,entries):
-        ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
+#        ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
+        ne=sorted(entries,key=lambda x: float(json.loads(x)['Offset']))
         return ne
 
     @AlwaysLock
@@ -572,13 +545,13 @@ class JackrabbitDB:
                 if not self.CheckTombstones(ptr):
                     # This is RAW line, \n included
                     self.dbTombstones.append([ptr, len(bline)])
-                ptr += len(bline)
+                ptr+=len(bline)
                 continue
 
             try:
                 record = json.loads(bline)
             except Exception as err:
-                ptr += len(bline)
+                ptr+=len(bline)
                 print("REBUILD JSON:", err)
                 print(bline)
                 continue
@@ -589,65 +562,19 @@ class JackrabbitDB:
                 if k not in record:
                     nf=True
             if nf==True:
+                # This should have been a "no brainer", but is was an
+                # absolute nightmare to debug.
+                ptr+=len(bline)
                 continue
 
             # Use shared helper — expands lists, handles compound, skips None
-            entries.extend(self.BuildIndexEntries(idx, record, ptr))
-            ptr += len(bline)
+            entries.extend(self.BuildIndexEntries(idx,record,ptr))
+            ptr+=len(bline)
         fh.close()
 
         entries = self.SortIndex(entries)
         fidx = self.dbIndex[idx].replace("|", ".")
         FF.WriteList2File(fidx, entries, sync=self.syncIDX)
-
-        """
-        # No DB, nothing to check.
-        if not os.path.exists(self.dbName):
-            return
-
-        # Force rebuild
-        self.Error=None
-        self.dbTombstones=[]
-        entries=[]
-        ptr=0
-        fh=open(self.dbName,"rb")
-        while True:
-            bline=fh.readline()
-            # No more data
-            if not bline:
-                break
-            # Tomestone record
-            if not bline.startswith(b'{'):
-                # Add to tombstone registry
-                if not self.CheckTombstones(ptr):
-                    # This is RAW line, \n included
-                    self.dbTombstones.append([ptr,len(bline)])
-                ptr+=len(bline)
-                continue
-
-            try:
-                record=json.loads(bline)
-            except Exception as err:
-                ptr+=len(bline)
-                print("REBUILD JSON:",err)
-                print(bline)
-                continue
-
-            kvtbl={}
-            # Add new or overwrite old
-            if "|" in idx:
-                val="|".join(str(record[k]) for k in idx.split('|'))
-                kvtbl={ "Key":val, "Offset":ptr }
-            else:
-                kvtbl={ "Key":record[idx], "Offset":ptr }
-            entries.append(json.dumps(kvtbl))
-            ptr+=len(bline)
-        fh.close()
-
-        entries=self.SortIndex(entries)
-        fidx=self.dbIndex[idx].replace("|",".")
-        FF.WriteList2File(fidx,entries,sync=self.syncIDX)
-        """
 
     # Verify the integrity of the database
 
@@ -899,6 +826,13 @@ def TestDB():
     # Create/Open database
     db=JackrabbitDB("/tmp/FilesDB",idx=["ID","File"])
 
+    # Add additional indexes
+    db.AddIndex("File|ID")
+    db.AddIndex("Filename|ID")
+    db.AddIndex("LastAccessed|File")
+    db.AddIndex("Pathway|ID")
+
+
     # Add files as data set
     print("Add data")
     for file in os.listdir(dir):
@@ -906,6 +840,9 @@ def TestDB():
         nr['ID']=CF.GetID(31,31)
         nr['File']=os.path.abspath(f"{dir}/{file}")
         nr['Filename']=f"{file}"
+        nr['Pathway']=nr['File'].split('/')
+        while '' in nr['Pathway']:
+            nr['Pathway'].remove('')
         nr['RealFile']=os.path.realpath(f"{dir}/{file}")
         nr['LastAccessed']=os.path.getatime(f"{dir}/{file}")
         if os.path.isdir(nr['File']):
@@ -921,11 +858,6 @@ def TestDB():
         etime=time.time()
         if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
-
-    # Add additional indexes
-    db.AddIndex("File|ID")
-    db.AddIndex("Filename|ID")
-    db.AddIndex("LastAccessed|File")
 
     # Force set cursor
     print("Cursor tests")
@@ -949,6 +881,11 @@ def TestDB():
     print("Binary Index Search:",result)
 
     # Binary prefix searching
+    result=db.BinaryPrefixSearch("Pathway|ID","bash")
+    print("Binary Prefix Search:",result)
+    print(db.Read(result[0]))
+
+    # Linear Containment
     result=db.LinearContainsSearch("Filename|ID","bash")
     print("Linear Contains Search:",result)
     for offset in result:
