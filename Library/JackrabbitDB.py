@@ -470,8 +470,7 @@ class JackrabbitDB:
 
     @AlwaysLock
     def SortIndex(self,entries):
-#        ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
-        ne=sorted(entries,key=lambda x: float(json.loads(x)['Offset']))
+        ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
         return ne
 
     @AlwaysLock
