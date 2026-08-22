@@ -5,12 +5,17 @@
 # 2024-2026 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
 
-# JackrabbitDB is a reference implementation of a tamper-evident, reconstructable,
-# provenance-tracking data layer. Its design properties: append, only JSONL,
-# per-record Blake3, deterministic replay, explicit reconstruction markers, make
-# it technically suitable as a component in high-trust architectures. Formal
-# certification, regulatory assessment, and production hardening are the
-# responsibility of the integrating organization.
+# JackrabbitDB is a reference implementation of a tamper-evident,
+# reconstructable, provenance-tracking data layer. Its design properties:
+# append, only JSONL, per-record Blake3, deterministic replay, explicit
+# reconstruction markers, make it technically suitable as a component in
+# high-trust architectures. Formal certification, regulatory assessment, and
+# production hardening are the responsibility of the integrating organization.
+
+# Theory: This represents a single shard. Stacking shards creates concurrency.
+# Shards are self contained fragments that interlink with a shard manager. For
+# example: employ or product sharding can be A-Z or AA-ZZ or even timestamp
+# based (daily or monthy).
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
@@ -30,6 +35,7 @@ import FileFunctions as FF
 class JackrabbitDB:
     def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=10):
         # Main database
+        self.WalkDriver=False
         self.syncDB=syncDB
         self.syncIDX=syncIDX
         # Name of database becomes the directory name on disk
@@ -58,7 +64,7 @@ class JackrabbitDB:
         FF.mkdir(self.dbDir)
 
         # Force rebuild the index files
-        self.CheckIndexes(True)
+        self.CheckIndexes()
 
     # Decorator for locking
 
@@ -96,7 +102,7 @@ class JackrabbitDB:
 
     def Blake(self,text):
         if isinstance(text,dict):
-            rec=json.dumps(text)
+            rec=json.dumps(text,sort_keys=True,separators=(',', ':'))
         else:
             rec=text
         h=blake3.blake3() #hashlib.Blake(digest_size=64)
@@ -135,7 +141,7 @@ class JackrabbitDB:
     @AlwaysLock
     def WriteTransaction(self,cmd,data):
         if isinstance(data,dict):
-            text=json.dumps(data)
+            text=json.dumps(data,sort_keys=True,separators=(',', ':'))
         else:
             text=data.strip()
 
@@ -147,12 +153,13 @@ class JackrabbitDB:
     @AlwaysLock
     def GetNextOffset(self, record):
         if isinstance(record, dict):
-            rec=json.dumps(record)+'\n'
+            rec=json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n'
         else:
             rec=record.strip()+'\n'
 
         needed=len(rec)
 
+        # First fit, probably should build a best fit version
         for i, (offset, length) in enumerate(self.dbTombstones):
             if length>=needed:
                 # Exact fit - remove slot
@@ -162,7 +169,6 @@ class JackrabbitDB:
                 else:
                     self.dbTombstones[i]=[offset+needed,length-needed]
                 return True,offset
-
         return False,FF.GetFileSize(self.dbName)
 
     # Add index file
@@ -299,7 +305,7 @@ class JackrabbitDB:
         record['jrdbBlake']=self.Blake(record)
         # Find next offset, recycle tombstones if possible
         roa,ptr=self.GetNextOffset(record)
-        r=json.dumps(record)+'\n'
+        r=json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n'
         self.WriteTransaction("ADD",record)
         if roa:
             # Recycle space
@@ -331,7 +337,7 @@ class JackrabbitDB:
         record['jrdbBlake']=self.Blake(record)
         # Add update to bottom
         roa,ptr=self.GetNextOffset(record)
-        r=json.dumps(record)+'\n'
+        r=json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n'
         self.WriteTransaction("UPDATE",record)
         if roa:
             # Recycle space
@@ -367,7 +373,7 @@ class JackrabbitDB:
         buf=self.Read(offset)
         if buf is None:
             raise Exception(f"Record damaged as {offset}")
-        buf=json.dumps(buf)  # STRIPS \n from count, which leave it in file
+        buf=json.dumps(buf,sort_keys=True,separators=(',', ':'))  # STRIPS \n from count, which leave it in file
         self.WriteTransaction("DELETE",buf)
         # Write the tombstone, take off \n. We need to fill exact space
         dashes="-"*(len(buf)) # REMEMBER no \n in count
@@ -419,6 +425,9 @@ class JackrabbitDB:
             FF.WriteList2File(fidx, entries, sync=self.syncIDX)
             return
 
+        # If there is no new entries, don't waste cycles resaving the
+        # file.
+
         entries = FF.ReadFile2List(fidx, Unique=False)
         newentries=self.BuildIndexEntries(idx, record, ptr)
         if newentries!=[]:
@@ -441,7 +450,7 @@ class JackrabbitDB:
                 raw = record.get(part)
                 if isinstance(raw, list):
                     value_lists.append([str(v) for v in raw])
-                elif raw is not None:
+                elif raw is not None and raw!="":
                     value_lists.append([str(raw)])
                 else:
                     return []
@@ -464,7 +473,7 @@ class JackrabbitDB:
             if isinstance(raw, list):
                 for elem in raw:
                     entries.append(json.dumps({"Key": str(elem), "Offset": ptr}))
-            elif raw is not None:
+            elif raw is not None and raw!="":
                 entries.append(json.dumps({"Key": raw, "Offset": ptr}))
             else:
                 return []
@@ -502,8 +511,8 @@ class JackrabbitDB:
 
     @AlwaysLock
     def CheckIndexes(self,force=False):
-        # No DB, nothing to check.
-        if not os.path.exists(self.dbName):
+        # No DB, nothing to check. Also, if WalkDriver is active
+        if not os.path.exists(self.dbName) or self.WalkDriver:
             return
 
         # Check the indexes
@@ -624,7 +633,7 @@ class JackrabbitDB:
     # Pack the database, remove tombstones
 
     @AlwaysLock
-    def PackDatabase(self):
+    def PackDatabase(self,RemoveCorrupt=False):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return False
@@ -659,11 +668,14 @@ class JackrabbitDB:
             # overhead.
 
             if not self.VerifyBlake(record):
-                self.Error="Corruption"
-                raise Exception(f"Corruption: {bline.decode('utf-8')}")
+                if RemoveCorrupt:
+                    self.WriteTransaction("CORRUPT",bline)
+                else:
+                    self.Error="Corruption"
+                    raise Exception(f"Corruption: {bline.strip()}")
 
             # WWrite out the new record
-            FF.AppendFile(packName,json.dumps(record)+'\n',sync=self.syncDB)
+            FF.AppendFile(packName,json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n',sync=self.syncDB)
         fh.close()
 
         try:
@@ -812,6 +824,39 @@ class JackrabbitDB:
         if results==[]:
             return None
         return results
+
+    # Walk each record of the database and call a support function, could
+    # be a verification, backup, so on.
+
+    @AlwaysLock
+    def Walk(self, idx, callback):
+        if idx not in self.dbIndex:
+            raise Exception(f"Index not loaded: {idx}")
+
+        fidx = self.dbIndex[idx].replace("|", ".")
+        if not os.path.exists(fidx):
+            return 0
+
+        self.WalkDriver=True
+        entries = FF.ReadFile2List(fidx, Unique=False)
+        count = 0
+
+        for line in entries:
+            try:
+                kv = json.loads(line)
+            except Exception:
+                continue
+
+            offset = kv["Offset"]
+            record = self.Read(offset)          # acquires lock, verifies Blake3
+            if record is None:
+                continue                        # tombstone or corrupt
+
+            if not callback(self, record, offset):
+                break
+            count+=1
+        self.WalkDriver=False
+        return count
 
 ###
 ### End library

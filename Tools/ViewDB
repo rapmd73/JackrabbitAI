@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Jackrabit AI
+# 2024 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
+# ViewDB — minimal JackrabbitDB curses viewer using the library
+
+import sys
+sys.path.append('/home/JackrabbitAI/Library')
+import os
+import curses
+import json
+
+from JackrabbitDB import JackrabbitDB
+import FileFunctions as FF
+
+# Default width of a field.  Should be redefinable in the final version.
+
+FIELD_W = 20
+
+def get_fields(db, limit=500):
+    """Return ordered list of field names from first N records using library."""
+    fields = []
+    seen = set()
+    fh = open(db.dbName, "r")
+    for i, line in enumerate(fh):
+        if i >= limit:
+            break
+        try:
+            rec = json.loads(line)
+        except:
+            continue
+        for k in rec.keys():
+            if k not in seen:
+                seen.add(k)
+                fields.append(k)
+    fh.close()
+    return fields
+
+
+def load_all_records(db, fields, index_name):
+    """Load all records using library Read() at each offset from specified index."""
+    records = []
+    idx_file = db.dbIndex.get(index_name)
+    if not idx_file:
+        return records
+    idx_path = idx_file.replace("|", ".")
+    entries = FF.ReadFile2List(idx_path, Unique=False)
+    for entry in entries:
+        try:
+            e = json.loads(entry)
+            offset = e['Offset']
+        except:
+            continue
+        rec = db.Read(offset)
+        if rec:
+            records.append({k: rec.get(k, "") for k in fields})
+    return records
+
+
+def fmt_val(v):
+    if isinstance(v, (list, dict)):
+        return json.dumps(v, ensure_ascii=False)
+    return str(v)
+
+
+def main(stdscr, db_path, index_name):
+    curses.curs_set(0)
+    stdscr.nodelay(False)
+    stdscr.keypad(True)
+
+    db = JackrabbitDB(db_path, idx=[index_name])
+    fields = get_fields(db)
+    if not fields:
+        stdscr.addstr(0, 0, "No fields found")
+        stdscr.getch()
+        return
+
+    records = load_all_records(db, fields, index_name)
+    if not records:
+        stdscr.addstr(0, 0, f"No records in index '{index_name}'")
+        stdscr.getch()
+        return
+
+    col_start = 0
+    row = 0
+
+    while True:
+        h, w = stdscr.getmaxyx()
+        max_rows = h - 2
+
+        col_start = max(0, min(col_start, len(fields) - 1))
+        row = max(0, min(row, len(records) - 1))
+
+        visible_fields = []
+        cw = 0
+        for i in range(col_start, len(fields)):
+            if cw + FIELD_W + 1 > w:
+                break
+            visible_fields.append(fields[i])
+            cw += FIELD_W + 1
+
+        stdscr.clear()
+
+        header = "".join(f"{f[:FIELD_W]:<{FIELD_W}} " for f in visible_fields)
+        stdscr.addstr(0, 0, header[:w-1], curses.A_REVERSE)
+
+        for i in range(max_rows):
+            r = row - (max_rows // 2) + i
+            if r < 0 or r >= len(records):
+                continue
+            rec = records[r]
+            line = "".join(f"{fmt_val(rec.get(f, ''))[:FIELD_W]:<{FIELD_W}} " for f in visible_fields)
+            y = i + 1
+            attr = curses.A_REVERSE if r == row else 0
+            stdscr.addstr(y, 0, line[:w-1], attr)
+
+        status = f"Index: {index_name}  Row {row+1}/{len(records)}  Fields {col_start+1}-{col_start+len(visible_fields)}/{len(fields)}  q=quit ,=left .=right p=up n=down"
+        stdscr.addstr(h-1, 0, status[:w-1], curses.A_DIM)
+
+        stdscr.refresh()
+
+        key = stdscr.getch()
+        if key == ord('q'):
+            break
+        elif key == curses.KEY_LEFT: # ord(','):
+            col_start -= 1
+        elif key == curses.KEY_RIGHT: # ord('.'):
+            col_start += 1
+        elif key == ord('p'):
+            row -= 1
+        elif key == ord('n'):
+            row += 1
+        elif key == curses.KEY_UP:
+            row -= 1
+        elif key == curses.KEY_DOWN:
+            row += 1
+        elif key == curses.KEY_PPAGE:
+            row -= max_rows
+        elif key == curses.KEY_NPAGE:
+            row += max_rows
+        elif key == curses.KEY_HOME:
+            row = 0
+        elif key == curses.KEY_END:
+            row = len(records) - 1
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} <JackrabbitDB_path> <index_name>")
+        print(f"Example: {sys.argv[0]} /home/Newshound/DataStorage/JRDB/NHDB ID")
+        print(f"         {sys.argv[0]} /home/Newshound/DataStorage/JRDB/NHDB Category|ID")
+        sys.exit(1)
+    curses.wrapper(main, sys.argv[1], sys.argv[2])
