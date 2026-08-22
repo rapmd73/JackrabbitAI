@@ -390,7 +390,7 @@ class JackrabbitDB:
 
     # Read a record at a position
     @AlwaysLock
-    def Read(self,offset):
+    def Read(self,offset,override=False):
         self.dbLock.Lock(expire=self.expire)
         fh=open(self.dbName,"rb")
         fh.seek(offset,os.SEEK_SET)
@@ -403,6 +403,12 @@ class JackrabbitDB:
         except Exception as err:
             self.Error=f"JSON: {err}"
             return None
+
+        # Override allows reading the message with Blake3 fails. Critical
+        # for diagnostics.
+        if override:
+            return line
+
         if not self.VerifyBlake(line):
             self.Error=f"DB Corruption: {line}"
             raise Exception(self.Error)
@@ -829,7 +835,7 @@ class JackrabbitDB:
     # be a verification, backup, so on.
 
     @AlwaysLock
-    def Walk(self, idx, callback):
+    def Walk(self, idx, callback,override=False):
         if idx not in self.dbIndex:
             raise Exception(f"Index not loaded: {idx}")
 
@@ -848,9 +854,9 @@ class JackrabbitDB:
                 continue
 
             offset = kv["Offset"]
-            record = self.Read(offset)          # acquires lock, verifies Blake3
+            record = self.Read(offset,override=override) # acquires lock, verifies Blake3
             if record is None:
-                continue                        # tombstone or corrupt
+                continue              # tombstone or corrupt
 
             if not callback(self, record, offset):
                 break
