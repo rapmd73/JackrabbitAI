@@ -33,7 +33,7 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class JackrabbitDB:
-    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=10):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=300):
         # Main database
         self.WalkDriver=False
         self.syncDB=syncDB
@@ -71,32 +71,61 @@ class JackrabbitDB:
     @staticmethod
     def AlwaysLock(func):
         def wrapper(self, *args, **kwargs):
-            expire=getattr(self, 'expire', 10)  # Read at RUNTIME
+            expire=getattr(self, 'expire', 300)  # Read at RUNTIME
 
             # if its already locked, not the function responsible for the lock.
             # Just run the function.
 
-            status=self.dbLock.IsLocked(expire=self.expire, acquire=False).lower()
+            status=self.IsLocked(False)
             if status=="locked":
                 return func(self, *args, **kwargs)
 
             # If we are not the owner, we just wait our turn, break on any error.
 
-            while True:
-                status=self.dbLock.IsLocked(expire=self.expire, acquire=True).lower()
-                if status!='notowner':
-                    break
-                time.sleep(0.1) # sleep 1/10th second
-
-            if status!="locked":
-                self.Error=f"Lock failed: {status}"
-                raise Exception(self.Error)
+            status=self.WaitLock()
 
             try:
                 return func(self, *args, **kwargs)
             finally:
-                self.dbLock.Unlock()
+                self.Unlock()
         return wrapper
+
+    # Locking primitives for DLM, ie db.IsLocked()
+
+    # The goal here is a consistent way for a calling program to mnage
+    # the lock.
+
+    def IsLocked(self,acquire=False):
+        return self.dbLock.IsLocked(expire=self.expire, acquire=acquire).lower()
+
+    def Lock(self,expire=None):
+        if not expire:
+            expire=getattr(self, 'expire', 300)  # Read at RUNTIME
+
+        status=self.dbLock.Lock(expire=expire)
+
+        if status!="locked":
+            self.Error=f"Lock failed: {status}"
+            raise Exception(self.Error)
+
+        return status
+
+    def Unlock(self):
+        return self.dbLock.Unlock()
+
+    # Brutal and unforgiving, but stable
+    def WaitLock(self):
+        while True:
+            status=self.IsLocked(True)
+            if status!='notowner':
+                break
+            time.sleep(0.1) # sleep 1/10th second
+
+        if status!="locked":
+            self.Error=f"Lock failed: {status}"
+            raise Exception(self.Error)
+
+        return status
 
     # Create a Blake hash. Argument is JSON. Test just incase JSONL is passed
 
@@ -111,6 +140,7 @@ class JackrabbitDB:
 
     # Verify the record hash as stable. Argument COULD be JSON or JSONL
 
+    @AlwaysLock
     def VerifyBlake(self,record):
         if isinstance(record,dict):
             # Do NOT damage the original. CRITICAL!
@@ -277,6 +307,8 @@ class JackrabbitDB:
     @AlwaysLock
     def Next(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
+        if pos>=len(self.dbCursor[cursor]["Entries"])-1:
+            return None
         offset=self.SetCursor(cursor,pos+1)
         data=self.Read(offset)
         return data
@@ -286,6 +318,8 @@ class JackrabbitDB:
     @AlwaysLock
     def Previous(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
+        if pos<=0:
+            return None
         offset=self.SetCursor(cursor,pos-1)
         data=self.Read(offset)
         return data
