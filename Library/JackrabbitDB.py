@@ -233,6 +233,25 @@ class JackrabbitDB:
         self.dbCursor.pop(idx,None)
         return True
 
+    # Reload the cursors from disk.
+
+    @AlwaysLock
+    def ReloadCursor(self,cursor,force=False):
+        reload=False
+        fidx=self.dbIndex[cursor].replace("|",".")
+        idxMtime=os.path.getmtime(fidx)
+
+        # if disk file is more up-to-date, reload and resync cursor by
+        # key (future concept)
+
+        if force or self.dbCursor[cursor]['idxMtime']<idxMtime:
+            reload=True
+            entries=FF.ReadFile2List(fidx,Unique=False)
+            if entries!=[]:
+                entries=json.loads(entries)
+            self.dbCursor[cursor]={ "idxMtime":idxMtime, "Entries":entries }
+        return reload
+
     # Reset cursor. 0 is start, -1 is end.
 
     @AlwaysLock
@@ -244,42 +263,34 @@ class JackrabbitDB:
         if cursor not in self.dbCursor:
             if not pos:
                 pos=0
-            fidx=self.dbIndex[cursor].replace("|",".")
-            entries=FF.ReadFile2List(fidx,Unique=False)
-            idxMtime=os.path.getmtime(fidx)
-            self.dbCursor[cursor]={ "Position":pos, "idxMtime":idxMtime, "Entries":entries }
+            self.ReloadCursor(cursor,force=True)
+            self.dbCursor[cursor]["Position"]=pos
         # Cursor initialized
         else:
             if not pos:
                 pos=0
-
             self.dbCursor[cursor]["Position"]=pos
-
-        fidx=self.dbIndex[cursor].replace("|",".")
-        idxMtime=os.path.getmtime(fidx)
 
         # if disk file is more up-to-date, reload and resync cursor by
         # key (future concept)
 
-        if self.dbCursor[cursor]['idxMtime']<idxMtime:
+        reload=self.ReloadCursor(cursor)
+        if reload:
             pos=0
-            entries=FF.ReadFile2List(fidx,Unique=False)
-            self.dbCursor[cursor]={ "Position":pos, "idxMtime":idxMtime, "Entries":entries }
-            return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
+            self.dbCursor[cursor]["Position"]=pos
+            return self.dbCursor[cursor]["Entries"][pos]['Offset']
 
         # Set the cursor
         if pos<0:
             l=len(self.dbCursor[cursor]["Entries"])+pos
             if l<0:
                 l=0
-            self.dbCursor[cursor]["Position"]=l
             pos=l
-            return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
-        if pos>len(self.dbCursor[cursor]["Entries"])-1:
+        elif pos>len(self.dbCursor[cursor]["Entries"])-1:
             pos=len(self.dbCursor[cursor]["Entries"])-1
 
         self.dbCursor[cursor]["Position"]=pos
-        return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
+        return self.dbCursor[cursor]["Entries"][pos]['Offset']
 
     # Get cursor. Return both key and offset
 
