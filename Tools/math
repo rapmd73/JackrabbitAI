@@ -24,7 +24,7 @@ def tokenize(expr):
             continue
 
         # Match operators and parentheses
-        if expr[pos] in '+-*/()':
+        if expr[pos] in '+-*/%()':
             tokens.append(expr[pos])
             pos += 1
             continue
@@ -35,7 +35,7 @@ def tokenize(expr):
 
 def shunting_yard(tokens):
     """Convert infix tokens to postfix using Shunting Yard algorithm"""
-    precedence = {'*': 2, '/': 2, '+': 1, '-': 1}
+    precedence = {'*': 2, '/': 2, '+': 1, '-': 1, '%': 1}
     output = []
     stack = []
 
@@ -79,7 +79,7 @@ def evaluate_postfix(tokens):
     """Evaluate postfix expression"""
     stack = []
     for token in tokens:
-        if token in '+-*/':
+        if token in '+-*/%':
             if len(stack) < 2:
                 raise ValueError("Insufficient operands")
             b = float(stack.pop())
@@ -88,6 +88,7 @@ def evaluate_postfix(tokens):
             if token == '+': result = a + b
             elif token == '-': result = a - b
             elif token == '*': result = a * b
+            elif token == '%': result = a % b
             elif token == '/':
                 if abs(b) < 1e-9:
                     raise ZeroDivisionError("Division by zero")

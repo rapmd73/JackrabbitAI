@@ -49,6 +49,61 @@ import FileFunctions as FF
 
 logging.getLogger('playwright').disabled=True
 
+ccTLD={".af":"AF", ".ax":"AX", ".al":"AL", ".dz":"DZ", ".as":"AS",
+    ".ad":"AD", ".ao":"AO", ".ai":"AI", ".aq":"AQ", ".ag":"AG", ".ar":"AR",
+    ".am":"AM", ".aw":"AW", ".ac":"AC", ".au":"AU", ".at":"AT", ".az":"AZ",
+    ".bs":"BS", ".bh":"BH", ".bd":"BD", ".bb":"BB", ".eus":"EUS", ".by":"BY",
+    ".be":"BE", ".bz":"BZ", ".bj":"BJ", ".bm":"BM", ".bt":"BT", ".bo":"BO",
+    ".bq":"BQ", ".an":"AN", ".nl":"NL", ".ba":"BA", ".bw":"BW", ".bv":"BV",
+    ".br":"BR", ".io":"IO", ".vg":"VG", ".bn":"BN", ".bg":"BG", ".bf":"BF",
+    ".mm":"MM", ".bi":"BI", ".kh":"KH", ".cm":"CM", ".ca":"CA", ".cv":"CV",
+    ".cat":"CAT", ".ky":"KY", ".cf":"CF", ".td":"TD", ".cl":"CL", ".cn":"CN",
+    ".cx":"CX", ".cc":"CC", ".co":"CO", ".km":"KM", ".cd":"CD", ".cg":"CG",
+    ".ck":"CK", ".cr":"CR", ".ci":"CI", ".hr":"HR", ".cu":"CU", ".cw":"CW",
+    ".cy":"CY", ".cz":"CZ", ".dk":"DK", ".dj":"DJ", ".dm":"DM", ".do":"DO",
+    ".tl":"TL", ".tp":"TP", ".ec":"EC", ".eg":"EG", ".sv":"SV", ".gq":"GQ",
+    ".er":"ER", ".ee":"EE", ".et":"ET", ".eu":"EU", ".fk":"FK", ".fo":"FO",
+    ".fm":"FM", ".fj":"FJ", ".fi":"FI", ".fr":"FR", ".gf":"GF", ".pf":"PF",
+    ".tf":"TF", ".ga":"GA", ".gal":"GAL", ".gm":"GM", ".ps":"PS", ".ge":"GE",
+    ".de":"DE", ".gh":"GH", ".gi":"GI", ".gr":"GR", ".gl":"GL", ".gd":"GD",
+    ".gp":"GP", ".gu":"GU", ".gt":"GT", ".gg":"GG", ".gn":"GN", ".gw":"GW",
+    ".gy":"GY", ".ht":"HT", ".hm":"HM", ".hn":"HN", ".hk":"HK", ".hu":"HU",
+    ".is":"IS", ".in":"IN", ".id":"ID", ".ir":"IR", ".iq":"IQ", ".ie":"IE",
+    ".im":"IM", ".il":"IL", ".it":"IT", ".jm":"JM", ".jp":"JP", ".je":"JE",
+    ".jo":"JO", ".kz":"KZ", ".ke":"KE", ".ki":"KI", ".kw":"KW", ".kg":"KG",
+    ".la":"LA", ".lv":"LV", ".lb":"LB", ".ls":"LS", ".lr":"LR", ".ly":"LY",
+    ".li":"LI", ".lt":"LT", ".lu":"LU", ".mo":"MO", ".mk":"MK", ".mg":"MG",
+    ".mw":"MW", ".my":"MY", ".mv":"MV", ".ml":"ML", ".mt":"MT", ".mh":"MH",
+    ".mq":"MQ", ".mr":"MR", ".mu":"MU", ".yt":"YT", ".mx":"MX", ".md":"MD",
+    ".mc":"MC", ".mn":"MN", ".me":"ME", ".ms":"MS", ".ma":"MA", ".mz":"MZ",
+    ".na":"NA", ".nr":"NR", ".np":"NP", ".nc":"NC", ".nz":"NZ", ".ni":"NI",
+    ".ne":"NE", ".ng":"NG", ".nu":"NU", ".nf":"NF", ".tr":"TR", ".kp":"KP",
+    ".mp":"MP", ".no":"NO", ".om":"OM", ".pk":"PK", ".pw":"PW", ".pa":"PA",
+    ".pg":"PG", ".py":"PY", ".pe":"PE", ".ph":"PH", ".pn":"PN", ".pl":"PL",
+    ".pt":"PT", ".pr":"PR", ".qa":"QA", ".ro":"RO", ".ru":"RU", ".rw":"RW",
+    ".re":"RE", ".bl":"BL", ".sh":"SH", ".kn":"KN", ".lc":"LC", ".mf":"MF",
+    ".pm":"PM", ".vc":"VC", ".ws":"WS", ".sm":"SM", ".st":"ST", ".sa":"SA",
+    ".sn":"SN", ".rs":"RS", ".sc":"SC", ".sl":"SL", ".sg":"SG", ".sx":"SX",
+    ".sk":"SK", ".si":"SI", ".sb":"SB", ".so":"SO", ".za":"ZA", ".gs":"GS",
+    ".kr":"KR", ".ss":"SS", ".es":"ES", ".lk":"LK", ".sd":"SD", ".sr":"SR",
+    ".sj":"SJ", ".sz":"SZ", ".se":"SE", ".ch":"CH", ".sy":"SY", ".tw":"TW",
+    ".tj":"TJ", ".tz":"TZ", ".th":"TH", ".tg":"TG", ".tk":"TK", ".to":"TO",
+    ".tt":"TT", ".tn":"TN", ".tm":"TM", ".tc":"TC", ".tv":"TV", ".ug":"UG",
+    ".ua":"UA", ".ae":"AE", ".uk":"UK", ".us":"US", ".vi":"VI", ".uy":"UY",
+    ".uz":"UZ", ".vu":"VU", ".va":"VA", ".ve":"VE", ".vn":"VN", ".wf":"WF",
+    ".eh":"EH", ".ye":"YE", ".zm":"ZM", ".zw":"ZW", ".gov":"US", ".mil":"US",
+    ".edu":"US", ".com":"US", ".net":"US", ".org":"US", ".info":"US",
+    ".biz":"US", ".nyc":"US", ".miami":"US", ".vegas":"US", ".boston":"US",
+    ".app":"US", ".dev":"US", ".page":"US", ".how":"US", ".new":"US",
+    ".day":"US", ".boo":"US", ".rsvp":"US", ".fly":"US", ".zip":"US",
+    ".mov":"US", ".foo":"US", ".amazon":"US", ".buy":"US", ".deal":"US",
+    ".shop":"US", ".talk":"US", ".pay":"US", ".zero":"US", ".spot":"US",
+    ".moi":"US", ".fast":"US", ".news":"US", ".now":"US", ".digital":"US",
+    ".online":"US", ".google":"US", ".world":"US", ".land":"US", ".int":"US",
+    ".network":"US", ".community":"US", ".blog":"US", ".press":"UAE",
+    ".site":"UAE", ".tech":"UAE", ".wales":"UK", ".cymru":"UK", ".top":"CN", 
+    ".earth":"JP" }
+
 # The `DecodeHashCodes` function takes an input string and decodes any numeric
 # character references (e.g., `&#65;`) it contains, replacing them with their
 # corresponding characters. It uses a regular expression (`&#(\d+);`) to match
@@ -483,6 +538,15 @@ def CheckAbuseIPDB(domain,userhome=None):
     except requests.exceptions.RequestException as e:
         print(f"Error checking AbuseIPDB: {e}")
         return None, 0
+
+# Get the global TLD of an URL and return the orgin country.
+
+def gTLD2Country(url):
+    dn=ExtractDomains(url)
+    tld=dn.split('.')[-1]
+    if '.'+tld.lower() in ccTLD:
+        return ccTLD['.'+tld]
+    return None
 
 ###
 ### End Library

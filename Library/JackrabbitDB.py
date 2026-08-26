@@ -239,6 +239,12 @@ class JackrabbitDB:
     def ReloadCursor(self,cursor,force=False):
         reload=False
         fidx=self.dbIndex[cursor].replace("|",".")
+
+        # Make sure the file exists
+        if not os.path.exists(fidx):
+            self.dbCursor[cursor]={ "idxMtime":0, "Entries":[] }
+            return True
+
         idxMtime=os.path.getmtime(fidx)
 
         # if disk file is more up-to-date, reload and resync cursor by
@@ -247,8 +253,6 @@ class JackrabbitDB:
         if force or self.dbCursor[cursor]['idxMtime']<idxMtime:
             reload=True
             entries=FF.ReadFile2List(fidx,Unique=False)
-            if entries!=[]:
-                entries=json.loads(entries)
             self.dbCursor[cursor]={ "idxMtime":idxMtime, "Entries":entries }
         return reload
 
@@ -278,7 +282,8 @@ class JackrabbitDB:
         if reload:
             pos=0
             self.dbCursor[cursor]["Position"]=pos
-            return self.dbCursor[cursor]["Entries"][pos]['Offset']
+            # Only convert when ACTUALLY needed
+            return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
 
         # Set the cursor
         if pos<0:
@@ -290,7 +295,8 @@ class JackrabbitDB:
             pos=len(self.dbCursor[cursor]["Entries"])-1
 
         self.dbCursor[cursor]["Position"]=pos
-        return self.dbCursor[cursor]["Entries"][pos]['Offset']
+        # Only convert when ACTUALLY needed
+        return json.loads(self.dbCursor[cursor]["Entries"][pos])['Offset']
 
     # Get cursor. Return both key and offset
 
@@ -305,7 +311,7 @@ class JackrabbitDB:
 
         # Check staleness
         fidx = self.dbIndex[cursor].replace("|", ".")
-        if self.dbCursor[cursor]['idxMtime']<os.path.getmtime(fidx):
+        if os.path.exists(fidx) and self.dbCursor[cursor]['idxMtime']<os.path.getmtime(fidx):
             self.SetCursor(cursor,0)
 
         pos=self.dbCursor[cursor]["Position"]
@@ -553,7 +559,7 @@ class JackrabbitDB:
             if os.path.exists(fidx):
                 result=self.BinaryIndexSearch(idx,record)
                 # We have a duplicate
-                if result is not None:
+                if result>-1:   # -1 Not found
                     self.Error="Duplicate"
                     return True
         return False
@@ -803,7 +809,8 @@ class JackrabbitDB:
             target=str(record[idx])
 
         # Binary search on entries list (already sorted by Key)
-        lo, hi=0, len(entries)-1
+        hi=len(entries)-1
+        lo=0
         while lo<=hi:
             mid=(lo+hi)//2
             kvtbl=json.loads(entries[mid])
@@ -814,7 +821,7 @@ class JackrabbitDB:
                 lo=mid+1
             else:
                 hi=mid-1
-        return None
+        return -1
 
     # Search a binary index for a prefix. Indexes MUST be unique, but
     # some thing might bot be, like filename or keyword.
@@ -832,7 +839,8 @@ class JackrabbitDB:
 
         # Binary search for LEFTMOST entry >= prefix
         target = prefix
-        lo, hi = 0, len(entries) - 1
+        lo=0
+        hi=len(entries) - 1
         while lo <= hi:
             mid = (lo + hi) // 2
             key = json.loads(entries[mid])['Key']
