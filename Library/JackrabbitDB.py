@@ -314,8 +314,12 @@ class JackrabbitDB:
         if os.path.exists(fidx) and self.dbCursor[cursor]['idxMtime']<os.path.getmtime(fidx):
             self.SetCursor(cursor,0)
 
-        pos=self.dbCursor[cursor]["Position"]
-        idx=self.dbCursor[cursor]["Entries"][pos]
+        if self.dbCursor[cursor]["Entries"]==[]:
+            pos=0
+            idx={}
+        else:
+            pos=self.dbCursor[cursor]["Position"]
+            idx=self.dbCursor[cursor]["Entries"][pos]
 
         return pos,json.loads(idx)
 
@@ -324,7 +328,7 @@ class JackrabbitDB:
     @AlwaysLock
     def Next(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
-        if pos>=len(self.dbCursor[cursor]["Entries"])-1:
+        if idx=={} or pos>=len(self.dbCursor[cursor]["Entries"])-1:
             return None
         offset=self.SetCursor(cursor,pos+1)
         data=self.Read(offset)
@@ -335,7 +339,7 @@ class JackrabbitDB:
     @AlwaysLock
     def Previous(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
-        if pos<=0:
+        if idx=={} or pos<=0:
             return None
         offset=self.SetCursor(cursor,pos-1)
         data=self.Read(offset)

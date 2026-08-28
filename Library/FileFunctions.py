@@ -149,30 +149,25 @@ def ReadFile2List(fname,Unique=True,Delimiter="\n",ForceLower=False,ForceUpper=F
 
     # Read the file and split it.
     if Delimiter!="\n":
-        responses=ReadFile(fname).strip().replace("\n",Delimiter).split(Delimiter)
+        res=ReadFile(fname).strip().replace("\n",Delimiter).split(Delimiter)
     else:
-        responses=ReadFile(fname).strip().split(Delimiter)
+        res=ReadFile(fname).strip().split(Delimiter)
 
-    # Get rid of empty items
-    if NoStripEmpty==False:
-        while '' in responses:
-            responses.remove('')
+    responses=[]
 
-    # Force upper if needed.
-    if ForceLower==True:
-        responses=[item.lower() for item in responses]
-
-    # Force lower if needed.
-    if ForceUpper==True:
-        responses=[item.upper() for item in responses]
-
-    # Force unique
-    if Unique==True:
-        res=[]
-        for r in responses:
-            if r not in res:
-                res.append(r)
-        responses=res
+    for r in res:
+        # Get rid of empty items
+        if NoStripEmpty==False and r=='':
+            continue
+        # Unique items
+        if Unique==True and r in responses:
+            continue
+        # Force upper if needed.
+        if ForceLower==True:
+            r=r.lower()
+        elif ForceUpper==True:
+            r=r.upper()
+        responses.append(r)
 
     return responses
 

@@ -112,7 +112,7 @@ def main(stdscr, db_path, index_name):
             if r < 0 or r >= len(records):
                 continue
             rec = records[r]
-            line = "".join(f"{fmt_val(rec.get(f, ''))[:FIELD_W]:<{FIELD_W}} " for f in visible_fields)
+            line = "".join(f"{fmt_val(rec.get(f, '')).replace('\n','.')[:FIELD_W]:<{FIELD_W}} " for f in visible_fields)
             y = i + 1
             attr = curses.A_REVERSE if r == row else 0
             stdscr.addstr(y, 0, line[:w-1], attr)
