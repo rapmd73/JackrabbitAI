@@ -52,7 +52,8 @@ class JackrabbitDB:
         self.dbIndex={}
         if idx:
             for i in idx:
-                self.dbIndex[i]=f"{self.dbDir}/Index.{i}.JIDX"
+                self.AddIndex(i)
+#                self.dbIndex[i]=f"{self.dbDir}/Index.{i}.JIDX"
 
         # Create cursors
         self.dbCursor={}
@@ -204,6 +205,7 @@ class JackrabbitDB:
     # Add index file
 
     @AlwaysLock
+    @DF.function_timer
     def AddIndex(self,idx):
         # Alread added, nothing to do.
         if idx in self.dbIndex:
@@ -212,7 +214,7 @@ class JackrabbitDB:
         # Register index path
         self.dbIndex[idx]=f"{self.dbDir}/Index.{idx}.JIDX"
         # Build index from existing data
-        self.RebuildIndex(idx)
+        self.CheckSingleIndex(idx)
         if self.Error:
             self.RemoveIndex(idx)
             return False
@@ -572,6 +574,21 @@ class JackrabbitDB:
 
     @AlwaysLock
     def CheckIndexes(self,force=False):
+        # No DB, nothing to check. Also, if WalkDriver is active
+        if not os.path.exists(self.dbName) or self.WalkDriver:
+            return
+
+        # Check the indexes
+        self.Error=None
+        dbMtime=os.path.getmtime(self.dbName)
+        # We need to walk every index file
+        for idx in self.dbIndex.keys():
+            self.CheckSingleIndex(idx,force)
+
+    # Check Index age and force a rebuild if needed
+
+    @AlwaysLock
+    def CheckSingleIndex(self,idx,force=False):
         # No DB, nothing to check. Also, if WalkDriver is active
         if not os.path.exists(self.dbName) or self.WalkDriver:
             return
