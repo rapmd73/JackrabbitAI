@@ -47,6 +47,10 @@ class JackrabbitDB:
         self.dbLock=w1=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7)
         # deleted records, time outs.
         self.dbTombstones=[]
+        # Report errors, including duplicates
+        self.Error=None
+        # Create cursors
+        self.dbCursor={}
 
         # Create index table
         self.dbIndex={}
@@ -54,12 +58,6 @@ class JackrabbitDB:
             for i in idx:
                 self.AddIndex(i)
 #                self.dbIndex[i]=f"{self.dbDir}/Index.{i}.JIDX"
-
-        # Create cursors
-        self.dbCursor={}
-
-        # Report errors, including duplicates
-        self.Error=None
 
         # Make database directory
         FF.mkdir(self.dbDir)
@@ -205,7 +203,6 @@ class JackrabbitDB:
     # Add index file
 
     @AlwaysLock
-    @DF.function_timer
     def AddIndex(self,idx):
         # Alread added, nothing to do.
         if idx in self.dbIndex:

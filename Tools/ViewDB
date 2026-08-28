@@ -1,47 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Jackrabit AI
+# Jackrabbit AI
 # 2024 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
 
-# ViewDB — minimal JackrabbitDB curses viewer using the library
+# ViewDB — JackrabbitDB curses viewer: FAST, sorted headers, one-time scan
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
-import os
 import curses
 import json
 
 from JackrabbitDB import JackrabbitDB
 import FileFunctions as FF
 
-# Default width of a field.  Should be redefinable in the final version.
-
 FIELD_W = 20
 
-def get_fields(db, limit=500):
-    """Return ordered list of field names from first N records using library."""
-    fields = []
-    seen = set()
+def get_all_fields(db):
+    """Single full scan - returns sorted field list."""
+    fields = set()
     fh = open(db.dbName, "r")
-    for i, line in enumerate(fh):
-        if i >= limit:
-            break
+    for line in fh:
         try:
             rec = json.loads(line)
+            fields.update(rec.keys())
         except:
             continue
-        for k in rec.keys():
-            if k not in seen:
-                seen.add(k)
-                fields.append(k)
     fh.close()
-    return fields
+    return sorted(fields)
 
-
-def load_all_records(db, fields, index_name):
-    """Load all records using library Read() at each offset from specified index."""
+def load_records(db, fields, index_name):
+    """Load all records once."""
     records = []
     idx_file = db.dbIndex.get(index_name)
     if not idx_file:
@@ -59,12 +49,10 @@ def load_all_records(db, fields, index_name):
             records.append({k: rec.get(k, "") for k in fields})
     return records
 
-
 def fmt_val(v):
     if isinstance(v, (list, dict)):
         return json.dumps(v, ensure_ascii=False)
     return str(v)
-
 
 def main(stdscr, db_path, index_name):
     curses.curs_set(0)
@@ -72,13 +60,16 @@ def main(stdscr, db_path, index_name):
     stdscr.keypad(True)
 
     db = JackrabbitDB(db_path, idx=[index_name])
-    fields = get_fields(db)
+
+    # ONE full scan at startup
+    fields = get_all_fields(db)
     if not fields:
         stdscr.addstr(0, 0, "No fields found")
         stdscr.getch()
         return
 
-    records = load_all_records(db, fields, index_name)
+    # Load all records once
+    records = load_records(db, fields, index_name)
     if not records:
         stdscr.addstr(0, 0, f"No records in index '{index_name}'")
         stdscr.getch()
@@ -125,9 +116,9 @@ def main(stdscr, db_path, index_name):
         key = stdscr.getch()
         if key == ord('q'):
             break
-        elif key == curses.KEY_LEFT: # ord(','):
+        elif key == curses.KEY_LEFT:
             col_start -= 1
-        elif key == curses.KEY_RIGHT: # ord('.'):
+        elif key == curses.KEY_RIGHT:
             col_start += 1
         elif key == ord('p'):
             row -= 1
