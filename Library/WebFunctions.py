@@ -543,7 +543,7 @@ def CheckAbuseIPDB(domain,userhome=None):
 
 def gTLD2Country(url):
     dn=ExtractDomains(url)
-    tld=dn.split('.')[-1]
+    tld=dn.split('.')[-1].lower()
     if '.'+tld.lower() in ccTLD:
         return ccTLD['.'+tld]
     return None
