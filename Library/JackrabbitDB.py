@@ -384,6 +384,7 @@ class JackrabbitDB:
         vers=oldrec.pop('jrdbVersions',[])
         vers.append(oldrec)
         record['jrdbVersions']=vers
+        record['jrdbVersionCount']=len(vers)
         record['jrdbUpdated']=time.time()
         # The old hash MUST be removed before calculating the new hash
         # MUST happen before write to disk.
@@ -507,7 +508,7 @@ class JackrabbitDB:
             parts = idx.split('|')
             value_lists = []
             for part in parts:
-                raw = record.get(part)
+                raw = record.get(part,None)
                 if isinstance(raw, list):
                     value_lists.append([str(v) for v in raw])
                 elif raw is not None and raw!="":
@@ -529,7 +530,7 @@ class JackrabbitDB:
                 val = "|".join(combo)
                 entries.append(json.dumps({"Key": val, "Offset": ptr}))
         else:
-            raw = record.get(idx)
+            raw = record.get(idx,None)
             if isinstance(raw, list):
                 for elem in raw:
                     entries.append(json.dumps({"Key": str(elem), "Offset": ptr}))

@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import sys
+sys.path.append('/home/JackrabbitAI/Library')
+import os
+import random
+import time
+
+import FileFunctions as FF
+
+def PickRandom(fname):
+    if not os.path.exists(fname):
+        return None
+
+    random.seed(time.time_ns())
+    responses=FF.ReadFile2List(fname)
+    return random.choice(responses)
+
+###
+### Main Driver
+###
+
+if len(sys.argv)<2:
+    print("file to pick from MUST be provided")
+    sys.exit(1)
+
+print(PickRandom(sys.argv[1]))
