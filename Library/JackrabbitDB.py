@@ -26,6 +26,7 @@ import datetime
 import time
 import random
 import json
+import ast
 
 import DLMLocker as DLM
 import DecoratorFunctions as DF
@@ -540,10 +541,55 @@ class JackrabbitDB:
                 return []
         return entries
 
+    # SortIndex.
+
+    # Unique situation in that multple parts (|) must be separated to get number
+    # sorted numbers. Need to learn:
+
+    # import ast
+    # ast.literal_eval("123")        # => 123
+    # ast.literal_eval("'x'")        # => 'x'
+    # ast.literal_eval("[1, 2, 3]")  # => [1, 2, 3]
+    # ast.literal_eval("1+2")        # raises — not a literal
+
     @AlwaysLock
-    def SortIndex(self,entries):
-        ne=sorted(entries,key=lambda x: json.loads(x)['Key'])
-        return ne
+    def SortIndex(self, entries):
+        # Convert one '|' component to a comparable tuple:
+        # numeric -> (0, real_float, imag_float, '')  (numbers sort before strings)
+        # string  -> (1, 0.0, 0.0, lowered_string)   (strings sort after numbers)
+
+        def part_key(p):
+            s = str(p).strip()
+            if s == '':
+                return (1, 0.0, 0.0, '')            # empty -> string-like
+            try:
+                # safe parse of Python literals (integers, floats, complex like
+                # '2j', underscores allowed)
+
+                v = ast.literal_eval(s)
+            except Exception:
+                return (1, 0.0, 0.0, s.lower())    # not a literal number -> string
+            # numeric types
+            if isinstance(v, complex):
+                return (0, float(v.real), float(v.imag), '')
+            if isinstance(v, (int, float)):
+                return (0, float(v), 0.0, '')
+            # anything else -> treat as string
+            return (1, 0.0, 0.0, s.lower())
+
+        # Build the overall sort key from the 'Key' value: a tuple of
+        # per-component tuples. Malformed JSON entries become a single-element
+        # tuple that sorts last.
+
+        def keyfn(item):
+            try:
+                k = json.loads(item)['Key']
+            except Exception:
+                return ((2, 0.0, 0.0, ''),)   # malformed -> last
+            parts = str(k).split('|')
+            return tuple(part_key(p) for p in parts)
+
+        return sorted(entries, key=keyfn)
 
     @AlwaysLock
     def CheckDuplicates(self,record):
