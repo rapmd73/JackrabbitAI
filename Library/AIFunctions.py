@@ -666,7 +666,7 @@ class Agent:
             # as well.
 
             if self.MaxMemory>0 and len(self.Memory)>self.MaxMemory:
-                self.Memory=self.Memory[-self.MaxMemory:]
+                self.Memory=CF.Reclaimation(self.Memory[-self.MaxMemory:])
 
             # Save the memory file
 
@@ -748,17 +748,6 @@ class Agent:
                     if messages[i]['role'].lower()=="user" or messages[i]['role'].lower()=="assistant":
                         messages.pop(i)
                         break
-                    """ Old way - depreciated
-                    if messages[i]['role'].lower()=="user" and messages[i+1]['role'].lower()=="assistant":
-                        # Remove the pair (two items)
-                        messages.pop(i)
-                        messages.pop(i)
-                        break
-                    elif messages[i]['role'].lower()=="user" and messages[i+1]['role'].lower()=="user":
-                        # Remove only one item if two adjacent items are user/user
-                        messages.pop(i)
-                        break
-                    """
 
             # Recalculate current tokens after removal
             current_tokens=count_tokens()
@@ -777,6 +766,7 @@ class Agent:
             js['content']=msg['content']
             NewMessages.append(js)
 
+        NewMessages=CF.Reclaimation(NewMessages)
         return NewMessages,current_tokens
 
     # This function prepares and sends a request to an AI service, then captures
@@ -1066,6 +1056,10 @@ class Agent:
 
         # response can be None
 
+        # Profiling shows that reclaimation has NO significant impact. However, it
+        # also has no determent to the operational runtime.
+
+        self.Memory=CF.Reclaimation(self.Memory)
         return self.response
 
     # AIClassifier that uses current service/model. This works because system role
@@ -1156,6 +1150,7 @@ class Agent:
 
         # response can be None
 
+        self.Memory=CF.Reclaimation(self.Memory)
         return self.response
 
     # These functions appear are a collection of methods for interacting with

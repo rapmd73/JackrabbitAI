@@ -49,6 +49,7 @@ import sys
 sys.path.append('/home/JackrabbitAI/Library')
 import functools
 import inspect
+import psutil
 import traceback
 import time
 
@@ -194,6 +195,72 @@ def function_trapper(failed_result=None):
         return decorator(failed_result)
     return decorator
 
+# Function RSS Monitor
+
+def function_RSSMonitor(func):
+    def get_rss_bytes():
+        # Prefer psutil if available
+        try:
+            return psutil.Process().memory_info().rss
+        except Exception:
+            pass
+
+        # Try /proc (Linux)
+        try:
+            with open('/proc/self/status', 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('VmRSS:'):
+                        parts = line.split()
+                        # VmRSS: <value> kB
+                        if len(parts) >= 2:
+                            return int(parts[1]) * 1024
+        except Exception:
+            pass
+
+        # Fallback to resource (may be in kilobytes on many Unixes)
+        try:
+            import resource
+            rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            # On Linux ru_maxrss is in kilobytes
+            return int(rss) * 1024
+        except Exception:
+            return 0
+
+    def format_bytes(n):
+        if not n:
+            return '0 B'
+        n = float(n)
+        for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+            if abs(n) < 1024.0:
+                return f"{n:3.1f} {unit}"
+            n /= 1024.0
+        return f"{n:.1f} PB"
+
+    def _sync_wrapper(*args, **kwargs):
+        before = get_rss_bytes()
+        try:
+            result = func(*args, **kwargs)
+            return result
+        finally:
+            after = get_rss_bytes()
+            delta = after - before
+            if delta!=0:
+                print(f"{func.__name__}: RSS before: {format_bytes(before)} RSS after: {format_bytes(after)} delta: {format_bytes(delta)}")
+
+    async def _async_wrapper(*args, **kwargs):
+        before = get_rss_bytes()
+        try:
+            result = await func(*args, **kwargs)
+            return result
+        finally:
+            after = get_rss_bytes()
+            delta = after - before
+            if delta!=0:
+                print(f"{func.__name__}: RSS before: {format_bytes(before)} RSS after: {format_bytes(after)} delta: {format_bytes(delta)}")
+
+    wrapper = _async_wrapper if inspect.iscoroutinefunction(func) else _sync_wrapper
+    return functools.wraps(func)(wrapper)
+
 ###
 ### Testing function
 ###
@@ -209,9 +276,10 @@ def function_trapper(failed_result=None):
 # demonstrating its ability to handle both valid and invalid division
 # operations.
 
-@function_stdout('TestDecorators.log')
+#@function_stdout('TestDecorators.log')
 @function_timer
 @function_trapper(0)
+@function_RSSMonitor
 def TestDecorators(a,b):
     return a/b
 

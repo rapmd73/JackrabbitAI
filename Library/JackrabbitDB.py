@@ -382,6 +382,9 @@ class JackrabbitDB:
 
         # Get versions and add to latest update
         oldrec=self.Read(offset)
+        if oldrec==None:
+            raise Exception(f"Corruption: {offset}/{record}")
+        vc=oldrec.pop('jrdbVersionCount',0)
         vers=oldrec.pop('jrdbVersions',[])
         vers.append(oldrec)
         record['jrdbVersions']=vers
@@ -428,7 +431,7 @@ class JackrabbitDB:
         # This blocks random offset attacks or bad programming
         buf=self.Read(offset)
         if buf is None:
-            raise Exception(f"Record damaged as {offset}")
+            raise Exception(f"Record damage as {offset}")
         buf=json.dumps(buf,sort_keys=True,separators=(',', ':'))  # STRIPS \n from count, which leave it in file
         self.WriteTransaction("DELETE",buf)
         # Write the tombstone, take off \n. We need to fill exact space
@@ -453,6 +456,9 @@ class JackrabbitDB:
         line=fh.readline()
         fh.close()
         if not line:
+            fs=FF.GetFileSize(self.dbName)
+            if offset>fs:
+                self.Error="Read past end"
             return None
         try:
             line=json.loads(line)
@@ -541,7 +547,7 @@ class JackrabbitDB:
                 return []
         return entries
 
-    # SortIndex.
+    # SortIndex
 
     # Unique situation in that multple parts (|) must be separated to get number
     # sorted numbers. Need to learn:
@@ -552,44 +558,46 @@ class JackrabbitDB:
     # ast.literal_eval("[1, 2, 3]")  # => [1, 2, 3]
     # ast.literal_eval("1+2")        # raises — not a literal
 
+    # Convert one '|' component to a comparable tuple:
+    # numeric -> (0, real_float, imag_float, '')  (numbers sort before strings)
+    # string  -> (1, 0.0, 0.0, lowered_string)   (strings sort after numbers)
+
+    @AlwaysLock
+    def ComparePartKey(self,p):
+        s = str(p).strip()
+        if s == '':
+            return (1, 0.0, 0.0, '')            # empty -> string-like
+        try:
+            # safe parse of Python literals (integers, floats, complex like
+            # '2j', underscores allowed)
+
+            v = ast.literal_eval(s)
+        except Exception:
+            return (1, 0.0, 0.0, s.lower())    # not a literal number -> string
+        # numeric types
+        if isinstance(v, complex):
+            return (0, float(v.real), float(v.imag), '')
+        if isinstance(v, (int, float)):
+            return (0, float(v), 0.0, '')
+        # anything else -> treat as string
+        return (1, 0.0, 0.0, s.lower())
+
+    # Build the overall sort key from the 'Key' value: a tuple of
+    # per-component tuples. Malformed JSON entries become a single-element
+    # tuple that sorts last.
+
+    @AlwaysLock
+    def CompareKey(self,item):
+        try:
+            k = json.loads(item)['Key']
+        except Exception:
+            return ((2, 0.0, 0.0, ''),)   # malformed -> last
+        parts = str(k).split('|')
+        return tuple(self.ComparePartKey(p) for p in parts)
+
     @AlwaysLock
     def SortIndex(self, entries):
-        # Convert one '|' component to a comparable tuple:
-        # numeric -> (0, real_float, imag_float, '')  (numbers sort before strings)
-        # string  -> (1, 0.0, 0.0, lowered_string)   (strings sort after numbers)
-
-        def part_key(p):
-            s = str(p).strip()
-            if s == '':
-                return (1, 0.0, 0.0, '')            # empty -> string-like
-            try:
-                # safe parse of Python literals (integers, floats, complex like
-                # '2j', underscores allowed)
-
-                v = ast.literal_eval(s)
-            except Exception:
-                return (1, 0.0, 0.0, s.lower())    # not a literal number -> string
-            # numeric types
-            if isinstance(v, complex):
-                return (0, float(v.real), float(v.imag), '')
-            if isinstance(v, (int, float)):
-                return (0, float(v), 0.0, '')
-            # anything else -> treat as string
-            return (1, 0.0, 0.0, s.lower())
-
-        # Build the overall sort key from the 'Key' value: a tuple of
-        # per-component tuples. Malformed JSON entries become a single-element
-        # tuple that sorts last.
-
-        def keyfn(item):
-            try:
-                k = json.loads(item)['Key']
-            except Exception:
-                return ((2, 0.0, 0.0, ''),)   # malformed -> last
-            parts = str(k).split('|')
-            return tuple(part_key(p) for p in parts)
-
-        return sorted(entries, key=keyfn)
+        return sorted(entries, key=self.CompareKey)
 
     @AlwaysLock
     def CheckDuplicates(self,record):
@@ -872,6 +880,7 @@ class JackrabbitDB:
             target="|".join(str(record[k]) for k in idx.split("|"))
         else:
             target=str(record[idx])
+        target=self.ComparePartKey(target)
 
         # Binary search on entries list (already sorted by Key)
         hi=len(entries)-1
@@ -879,7 +888,7 @@ class JackrabbitDB:
         while lo<=hi:
             mid=(lo+hi)//2
             kvtbl=json.loads(entries[mid])
-            key=kvtbl["Key"]
+            key=self.ComparePartKey(kvtbl["Key"])
             if key==target:
                 return kvtbl['Offset']
             elif key<target:
@@ -903,13 +912,14 @@ class JackrabbitDB:
             return None
 
         # Binary search for LEFTMOST entry >= prefix
-        target = prefix
+        target=self.ComparePartKey(prefix)
         lo=0
         hi=len(entries) - 1
         while lo <= hi:
             mid = (lo + hi) // 2
-            key = json.loads(entries[mid])['Key']
-            if key >= target:
+            kvtbl=json.loads(entries[mid])['Key']
+            key=self.ComparePartKey(kvtbl["Key"])
+            if key>=target:
                 hi = mid - 1
             else:
                 lo = mid + 1
