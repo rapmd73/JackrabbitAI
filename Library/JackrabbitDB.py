@@ -149,8 +149,8 @@ class JackrabbitDB:
             try:
                 rec=json.loads(record)
             except Exception as err:
-                self.Error=err
-                raise Exception("Blake3 verification failed.")
+                self.Error=f"Blake3 Verification failed: {err}"
+                return False
 
         # Get old hash
         oldBlake=rec.get('jrdbBlake',None)
@@ -376,12 +376,12 @@ class JackrabbitDB:
     # Update: append new record.  turn old record into tombstones.
 
     @AlwaysLock
-    def Update(self,offset,record):
+    def Update(self,offset,record,override=False):
         if record is None:
             return None, None
 
         # Get versions and add to latest update
-        oldrec=self.Read(offset)
+        oldrec=self.Read(offset,override=override)
         if oldrec==None:
             raise Exception(f"Corruption: {offset}/{record}")
         vc=oldrec.pop('jrdbVersionCount',0)
@@ -392,7 +392,8 @@ class JackrabbitDB:
         record['jrdbUpdated']=time.time()
         # The old hash MUST be removed before calculating the new hash
         # MUST happen before write to disk.
-        record.pop('jrdbBlake',None)
+        while 'jrdbBlake' in record:
+            record.pop('jrdbBlake',None)
         record['jrdbBlake']=self.Blake(record)
         # Add update to bottom
         roa,ptr=self.GetNextOffset(record)
@@ -455,6 +456,7 @@ class JackrabbitDB:
         fh.seek(offset,os.SEEK_SET)
         line=fh.readline()
         fh.close()
+
         if not line:
             fs=FF.GetFileSize(self.dbName)
             if offset>fs:
@@ -471,8 +473,8 @@ class JackrabbitDB:
         if override:
             return line
 
-        if not self.VerifyBlake(line):
-            self.Error=f"DB Corruption: {line}"
+        if not override and not self.VerifyBlake(line):
+            self.Error=f"Read Corruption: {line}"
             raise Exception(self.Error)
         return line
 
@@ -562,7 +564,6 @@ class JackrabbitDB:
     # numeric -> (0, real_float, imag_float, '')  (numbers sort before strings)
     # string  -> (1, 0.0, 0.0, lowered_string)   (strings sort after numbers)
 
-    @AlwaysLock
     def ComparePartKey(self,p):
         s = str(p).strip()
         if s == '':
@@ -586,7 +587,6 @@ class JackrabbitDB:
     # per-component tuples. Malformed JSON entries become a single-element
     # tuple that sorts last.
 
-    @AlwaysLock
     def CompareKey(self,item):
         try:
             k = json.loads(item)['Key']
@@ -594,6 +594,9 @@ class JackrabbitDB:
             return ((2, 0.0, 0.0, ''),)   # malformed -> last
         parts = str(k).split('|')
         return tuple(self.ComparePartKey(p) for p in parts)
+
+    def CompareAllKeys(self,s):
+        return tuple(self.ComparePartKey(p) for p in str(s).split('|'))
 
     @AlwaysLock
     def SortIndex(self, entries):
@@ -645,20 +648,19 @@ class JackrabbitDB:
         if not os.path.exists(self.dbName) or self.WalkDriver:
             return
 
-        # Check the indexes
+        # Check the index
         self.Error=None
         dbMtime=os.path.getmtime(self.dbName)
-        # We need to walk every index file
-        for idx in self.dbIndex.keys():
-            fidx=self.dbIndex[idx].replace("|",".")
-            if os.path.exists(fidx) or force:
-                iMtime=0
-                if not force:
-                    iMtime=os.path.getmtime(fidx)
-                if iMtime<dbMtime:
-                    self.RebuildIndex(idx)
-            else:
+
+        fidx=self.dbIndex[idx].replace("|",".")
+        if os.path.exists(fidx) or force:
+            iMtime=0
+            if not force:
+                iMtime=os.path.getmtime(fidx)
+            if iMtime<dbMtime:
                 self.RebuildIndex(idx)
+        else:
+            self.RebuildIndex(idx)
 
     # Rebuild a single index
 
@@ -719,7 +721,7 @@ class JackrabbitDB:
     # Verify the integrity of the database
 
     @AlwaysLock
-    def VerifyDatabase(self):
+    def VerifyDatabase(self,display=False):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return False
@@ -742,8 +744,9 @@ class JackrabbitDB:
             except Exception as err:
                 ptr+=len(bline)
                 self.Error="VerifyDB JSON: {err}"
-                print(self.Error)
-                print(bline.decode('utf-8'))
+                if display:
+                    print(self.Error)
+                    print(bline.decode('utf-8'))
                 continue
 
             # Verify record integrity. Required to mintain a full "NO
@@ -751,9 +754,9 @@ class JackrabbitDB:
             # overhead.
 
             if not self.VerifyBlake(record):
-                self.Error="Corruption"
-                print(f"Corruption: {bline.decode('utf-8')}")
-                raise Exception("Database curruption")
+                self.Error="Corruption: Blake verification failed"
+                if display:
+                    print(f"Corruption: {bline.decode('utf-8')}")
         fh.close()
 
         if not self.Error:
@@ -762,8 +765,11 @@ class JackrabbitDB:
 
     # Pack the database, remove tombstones
 
+    # idx is a SINGLE index that will be used to force deduplicate the database on
+    # a first come fist used approached.
+
     @AlwaysLock
-    def PackDatabase(self,RemoveCorrupt=False):
+    def PackDatabase(self,idx=None,RemoveCorrupt=False):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
             return False
@@ -772,6 +778,9 @@ class JackrabbitDB:
         packName=(f"{self.dbName}.packwork")
         if os.path.exists(packName):
             os.remove(packName)
+
+        # the list we will use to verify NO duplicates if idx is NOT None.
+        ilist=[]
 
         # Force pack
         self.Error=None
@@ -793,6 +802,11 @@ class JackrabbitDB:
                 print(bline.decode('utf-8'))
                 continue
 
+            # Check for duplicate idx
+
+            if idx and record[idx] in ilist:
+                continue
+
             # Verify record integrity. Required to mintain a full "NO
             # TRUST" environment. There is a price to pay in latency and
             # overhead.
@@ -804,7 +818,8 @@ class JackrabbitDB:
                     self.Error="Corruption"
                     raise Exception(f"Corruption: {bline.strip()}")
 
-            # WWrite out the new record
+            # Write out the new record
+            ilist.append(record[idx])
             FF.AppendFile(packName,json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n',sync=self.syncDB)
         fh.close()
 
@@ -880,7 +895,8 @@ class JackrabbitDB:
             target="|".join(str(record[k]) for k in idx.split("|"))
         else:
             target=str(record[idx])
-        target=self.ComparePartKey(target)
+
+        target=self.CompareAllKeys(target)
 
         # Binary search on entries list (already sorted by Key)
         hi=len(entries)-1
@@ -888,7 +904,7 @@ class JackrabbitDB:
         while lo<=hi:
             mid=(lo+hi)//2
             kvtbl=json.loads(entries[mid])
-            key=self.ComparePartKey(kvtbl["Key"])
+            key=self.CompareAllKeys(kvtbl["Key"])
             if key==target:
                 return kvtbl['Offset']
             elif key<target:
@@ -912,13 +928,13 @@ class JackrabbitDB:
             return None
 
         # Binary search for LEFTMOST entry >= prefix
-        target=self.ComparePartKey(prefix)
+        target=self.CompareAllKeys(prefix)
         lo=0
         hi=len(entries) - 1
         while lo <= hi:
             mid = (lo + hi) // 2
             kvtbl=json.loads(entries[mid])['Key']
-            key=self.ComparePartKey(kvtbl["Key"])
+            key=self.CompareAllKeys(kvtbl["Key"])
             if key>=target:
                 hi = mid - 1
             else:
