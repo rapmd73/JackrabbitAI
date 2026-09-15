@@ -819,7 +819,8 @@ class JackrabbitDB:
                     raise Exception(f"Corruption: {bline.strip()}")
 
             # Write out the new record
-            ilist.append(record[idx])
+            if idx:
+                ilist.append(record[idx])
             FF.AppendFile(packName,json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n',sync=self.syncDB)
         fh.close()
 
@@ -933,7 +934,7 @@ class JackrabbitDB:
         hi=len(entries) - 1
         while lo <= hi:
             mid = (lo + hi) // 2
-            kvtbl=json.loads(entries[mid])['Key']
+            kvtbl=json.loads(entries[mid])
             key=self.CompareAllKeys(kvtbl["Key"])
             if key>=target:
                 hi = mid - 1
@@ -1028,7 +1029,6 @@ def TestDB():
     db.AddIndex("LastAccessed|File")
     db.AddIndex("Pathway|ID")
 
-
     # Add files as data set
     print("Add data")
     for file in os.listdir(dir):
@@ -1061,7 +1061,6 @@ def TestDB():
     record=db.Read(offset)
     print(record)
 
-    """
     offset=db.SetCursor(cursor="File",pos=-3)
     record=db.Read(offset)
     print(record)
@@ -1069,7 +1068,6 @@ def TestDB():
     # Get current cursor
     pos,idx=db.GetCursor(cursor="File")
     print("Cursor:",pos,idx)
-    """
 
     # Binary index searching
     key=record['ID']
@@ -1088,14 +1086,12 @@ def TestDB():
         record=db.Read(offset)
         print(record)
 
-    """
     # Test Next and previous
     print("Next/Previous tests")
     nrec=db.Next("File")
     print("N:",nrec)
     prec=db.Previous("File")
     print("P:",prec)
-    """
 
     # Find all records with "bash" and edit them
     print("Edit tests")
@@ -1110,7 +1106,6 @@ def TestDB():
                     record['EditCount']=record.get('EditCount',0)+1
                     ptr,newrec=db.Update(res['Offset'],record)
 
-    """
     # Find and delete all records with python in them
     print("Delete tests")
     results=db.SearchContains("python")
@@ -1128,7 +1123,6 @@ def TestDB():
     print("Cursor invalidation test")
     nrec=db.Next("File")
     print("CIT:",nrec)
-    """
 
     # Remove additional indexes
     db.RemoveIndex("ID")
