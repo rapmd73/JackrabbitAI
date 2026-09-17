@@ -502,7 +502,7 @@ class JackrabbitDB:
         newentries=self.BuildIndexEntries(idx, record, ptr)
         if newentries!=[]:
             entries.extend(newentries)
-            entries = self.SortIndex(entries)
+            entries = self.SortIndex(entries,idx)
             FF.WriteList2File(fidx, entries, sync=self.syncIDX)
 
     # Internal function to split lists into indexable elements.
@@ -513,11 +513,16 @@ class JackrabbitDB:
     def BuildIndexEntries(self, idx, record, ptr):
         entries = []
         if "|" in idx:
-            # Compound index: expand any list fields into multiple entries (cartesian product)
+
+            # Compound index: expand any list fields into multiple entries
+            # (cartesian product)
+
+            # Reverse sorting marker doesn't matter here.
+
             parts = idx.split('|')
             value_lists = []
             for part in parts:
-                raw = record.get(part,None)
+                raw = record.get(part.lstrip("!"),None)
                 if isinstance(raw, list):
                     value_lists.append([str(v) for v in raw])
                 elif raw is not None and raw!="":
@@ -554,6 +559,10 @@ class JackrabbitDB:
     # Unique situation in that multple parts (|) must be separated to get number
     # sorted numbers. Need to learn:
 
+    # Build a tuple list from the index(es), including reverses
+    # Sort the tuple list
+    # build the return list from the tuple list.
+
     # import ast
     # ast.literal_eval("123")        # => 123
     # ast.literal_eval("'x'")        # => 'x'
@@ -564,7 +573,10 @@ class JackrabbitDB:
     # numeric -> (0, real_float, imag_float, '')  (numbers sort before strings)
     # string  -> (1, 0.0, 0.0, lowered_string)   (strings sort after numbers)
 
-    def ComparePartKey(self,p):
+    def inverseString(self,s):
+        return ''.join(chr(0x10FFFF-ord(ch)) for ch in s)
+
+    def ComparePartKey(self,p,reverse=False):
         s = str(p).strip()
         if s == '':
             return (1, 0.0, 0.0, '')            # empty -> string-like
@@ -574,33 +586,76 @@ class JackrabbitDB:
 
             v = ast.literal_eval(s)
         except Exception:
-            return (1, 0.0, 0.0, s.lower())    # not a literal number -> string
+            if reverse:
+                return (1, 0.0, 0.0, self.inverseString(s.lower()))    # not a literal number -> string
+            else:
+                return (1, 0.0, 0.0, s.lower())
         # numeric types
         if isinstance(v, complex):
-            return (0, float(v.real), float(v.imag), '')
+            if reverse:
+                return (0, -float(v.real), -float(v.imag), '')
+            else:
+                return (0, float(v.real), float(v.imag), '')
         if isinstance(v, (int, float)):
-            return (0, float(v), 0.0, '')
+            if reverse:
+                return (0, -float(v), 0.0, '')
+            else:
+                return (0, float(v), 0.0, '')
         # anything else -> treat as string
-        return (1, 0.0, 0.0, s.lower())
+        if reverse:
+            return (1, 0.0, 0.0, self.inverseString(s.lower()))    # not a literal number -> string
+        else:
+            return (1, 0.0, 0.0, s.lower())
 
-    # Build the overall sort key from the 'Key' value: a tuple of
-    # per-component tuples. Malformed JSON entries become a single-element
-    # tuple that sorts last.
-
-    def CompareKey(self,item):
-        try:
-            k = json.loads(item)['Key']
-        except Exception:
-            return ((2, 0.0, 0.0, ''),)   # malformed -> last
-        parts = str(k).split('|')
-        return tuple(self.ComparePartKey(p) for p in parts)
+    # Compare ALL keys
+    # Remove "!" from each part for reverse sorting
 
     def CompareAllKeys(self,s):
-        return tuple(self.ComparePartKey(p) for p in str(s).split('|'))
+        tlist=[]
+        for p in str(s).split('|'):
+            if p.startswith("!"):
+                tlist.append(self.ComparePartKey(p.lstrip("!"),reverse=True))
+            else:
+                tlist.append(self.ComparePartKey(p))
+        return tuple(tlist)
+
+    # Sorting an unknown number of keys is problematic, so we build ONE mater key,
+    # most significant to least significant and sort that.
 
     @AlwaysLock
-    def SortIndex(self, entries):
-        return sorted(entries, key=self.CompareKey)
+    def SortIndex(self, entries, idx):
+        # Figure out the reverse map from the index
+        rmap=[]
+        for p in idx.split('|'):
+            if p.startswith("!"):
+                rmap.append(True)
+            else:
+                rmap.append(False)
+
+        # Build tuple list, 4x fster (supposedly) over regular lists
+        tlist=[]
+        for entry in entries:
+            tl=[]
+            try:
+                parts=json.loads(entry)['Key'].split("|")
+            except Exception as err:
+                tl.append(((2, 0.0, 0.0, ''),entry))
+                continue
+
+            for p in range(len(parts)):
+                tl.append(self.ComparePartKey(parts[p].lstrip("!"),reverse=rmap[p]))
+
+            # For building the final sorted list, [0] is the combined sort key
+            tlist.append([tuple(tl),entry])
+
+        # Sort the tuples, ignore the data
+        slist=sorted(tlist, key=lambda kv: kv[0])
+
+        # Build final list and return, data at [-1]
+        nlist=[]
+        for i in range(len(slist)):
+            nlist.append(slist[i][-1])
+        return nlist
 
     @AlwaysLock
     def CheckDuplicates(self,record):
@@ -611,7 +666,7 @@ class JackrabbitDB:
             # Skip missing keys
             nf=False
             for k in idx.split("|"):
-                if k not in record:
+                if k.lstrip("!") not in record:
                     nf=True
             if nf:
                 continue
@@ -701,7 +756,7 @@ class JackrabbitDB:
             # If a key is NOT actually in the record, skip this record.
             nf=False
             for k in idx.split("|"):
-                if k not in record:
+                if k.lstrip("!") not in record:
                     nf=True
             if nf==True:
                 # This should have been a "no brainer", but is was an
@@ -714,7 +769,10 @@ class JackrabbitDB:
             ptr+=len(bline)
         fh.close()
 
-        entries = self.SortIndex(entries)
+        ####> Problem is index is sent in compound. This is BROKE. it sees the
+        ####> ENTIRE list, not individual columns.
+
+        entries = self.SortIndex(entries,idx)
         fidx = self.dbIndex[idx].replace("|", ".")
         FF.WriteList2File(fidx, entries, sync=self.syncIDX)
 
@@ -804,7 +862,8 @@ class JackrabbitDB:
 
             # Check for duplicate idx
 
-            if idx and record[idx] in ilist:
+            sidx=idx.lstrip("!")
+            if sidx and record[sidx] in ilist:
                 continue
 
             # Verify record integrity. Required to mintain a full "NO
@@ -882,7 +941,7 @@ class JackrabbitDB:
                 results.append(kv['Offset'])
         return results
 
-    # Binary search.  Really nice is index is already sorted.
+    # Binary search.  Really nice is index is already sorted. record[] is JSON
 
     @AlwaysLock
     def BinaryIndexSearch(self, idx, record):
