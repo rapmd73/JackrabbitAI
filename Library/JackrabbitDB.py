@@ -33,9 +33,9 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class JackrabbitDB:
-    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=300):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=300,Rebuild=True):
         # Main database
-        self.WalkDriver=False
+        self.RebuildIndexes=Rebuild
         self.syncDB=syncDB
         self.syncIDX=syncIDX
         # Name of database becomes the directory name on disk
@@ -674,8 +674,8 @@ class JackrabbitDB:
 
     @AlwaysLock
     def CheckIndexes(self,force=False):
-        # No DB, nothing to check. Also, if WalkDriver is active
-        if not os.path.exists(self.dbName) or self.WalkDriver:
+        # No DB, nothing to check.
+        if not os.path.exists(self.dbName):
             return
 
         # Check the indexes
@@ -689,8 +689,8 @@ class JackrabbitDB:
 
     @AlwaysLock
     def CheckSingleIndex(self,idx,force=False):
-        # No DB, nothing to check. Also, if WalkDriver is active
-        if not os.path.exists(self.dbName) or self.WalkDriver:
+        # No DB, nothing to check.
+        if not os.path.exists(self.dbName):
             return
 
         # Check the index
@@ -712,7 +712,7 @@ class JackrabbitDB:
     @AlwaysLock
     def RebuildIndex(self,idx):
         # No DB, nothing to check.
-        if not os.path.exists(self.dbName):
+        if not os.path.exists(self.dbName) or self.RebuildIndexes==False:
             return
 
         # Force rebuild
@@ -1038,7 +1038,6 @@ class JackrabbitDB:
         if not os.path.exists(fidx):
             return 0
 
-        self.WalkDriver=True
         entries = FF.ReadFile2List(fidx, Unique=False)
         count = 0
 
@@ -1056,7 +1055,6 @@ class JackrabbitDB:
             if not callback(self, record, offset):
                 break
             count+=1
-        self.WalkDriver=False
         return count
 
 ###
