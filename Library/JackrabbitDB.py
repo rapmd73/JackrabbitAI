@@ -26,7 +26,6 @@ import datetime
 import time
 import random
 import json
-import ast
 
 import DLMLocker as DLM
 import DecoratorFunctions as DF
@@ -399,14 +398,15 @@ class JackrabbitDB:
         roa,ptr=self.GetNextOffset(record)
         r=json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n'
         self.WriteTransaction("UPDATE",record)
+        # Turn old record to tombstone
+        self.Delete(offset=offset)
+        # Write the new record
         if roa:
             # Recycle space
             FF.WriteSeek(self.dbName,ptr,r.encode('utf-8'),sync=self.syncDB)
         else:
             # Add to end of file
             FF.AppendFile(self.dbName,r,sync=self.syncDB)
-        # Turn old record to tombstone
-        self.Delete(offset=offset)
         # Rebuild indexes
         self.CheckIndexes()
         # Reset cursors
@@ -425,7 +425,7 @@ class JackrabbitDB:
     # Delete a record
     @AlwaysLock
     def Delete(self,offset=None):
-        if not offset:
+        if offset is None:
             return False
 
         # Verify old record, boundary start/Blake3
@@ -563,12 +563,6 @@ class JackrabbitDB:
     # Sort the tuple list
     # build the return list from the tuple list.
 
-    # import ast
-    # ast.literal_eval("123")        # => 123
-    # ast.literal_eval("'x'")        # => 'x'
-    # ast.literal_eval("[1, 2, 3]")  # => [1, 2, 3]
-    # ast.literal_eval("1+2")        # raises — not a literal
-
     # Convert one '|' component to a comparable tuple:
     # numeric -> (0, real_float, imag_float, '')  (numbers sort before strings)
     # string  -> (1, 0.0, 0.0, lowered_string)   (strings sort after numbers)
@@ -579,36 +573,32 @@ class JackrabbitDB:
     def ComparePartKey(self,p,reverse=False):
         s = str(p).strip()
         if s == '':
-            return (1, 0.0, 0.0, '')            # empty -> string-like
+            return (1, 0.0, '')            # empty -> string-like
         try:
             # safe parse of Python literals (integers, floats, complex like
             # '2j', underscores allowed)
 
-            v = ast.literal_eval(s)
+            v = float(s)
         except Exception:
             if reverse:
-                return (1, 0.0, 0.0, self.inverseString(s.lower()))    # not a literal number -> string
+                return (1, 0.0, self.inverseString(s.lower()))    # not a literal number -> string
             else:
-                return (1, 0.0, 0.0, s.lower())
+                return (1, 0.0, s.lower())
         # numeric types
-        if isinstance(v, complex):
-            if reverse:
-                return (0, -float(v.real), -float(v.imag), '')
-            else:
-                return (0, float(v.real), float(v.imag), '')
         if isinstance(v, (int, float)):
             if reverse:
-                return (0, -float(v), 0.0, '')
+                return (0, -float(v), '')
             else:
-                return (0, float(v), 0.0, '')
+                return (0, float(v), '')
         # anything else -> treat as string
         if reverse:
-            return (1, 0.0, 0.0, self.inverseString(s.lower()))    # not a literal number -> string
+            return (1, 0.0, self.inverseString(s.lower()))    # not a literal number -> string
         else:
-            return (1, 0.0, 0.0, s.lower())
+            return (1, 0.0, s.lower())
 
     # Compare ALL keys
     # Remove "!" from each part for reverse sorting
+    # Used in searching
 
     def CompareAllKeys(self,s):
         tlist=[]
@@ -639,7 +629,7 @@ class JackrabbitDB:
             try:
                 parts=json.loads(entry)['Key'].split("|")
             except Exception as err:
-                tl.append(((2, 0.0, 0.0, ''),entry))
+                tl.append([(2, 0.0, ''),entry])
                 continue
 
             for p in range(len(parts)):
@@ -862,9 +852,10 @@ class JackrabbitDB:
 
             # Check for duplicate idx
 
-            sidx=idx.lstrip("!")
-            if sidx and record[sidx] in ilist:
-                continue
+            if idx:
+                sidx=idx.lstrip("!")
+                if sidx and record[sidx] in ilist:
+                    continue
 
             # Verify record integrity. Required to mintain a full "NO
             # TRUST" environment. There is a price to pay in latency and
@@ -937,7 +928,7 @@ class JackrabbitDB:
                 kv = json.loads(line)
             except Exception:
                 continue
-            if substr in kv['Key']:
+            if substr.lower() in kv['Key'].lower():
                 results.append(kv['Offset'])
         return results
 

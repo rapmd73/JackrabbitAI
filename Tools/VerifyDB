@@ -19,3 +19,6 @@ if len(sys.argv)<2:
 
 db=JackrabbitDB(sys.argv[1])
 print(f"Database verified: {db.VerifyDatabase()}")
+print("Packing...")
+db.PackDatabase()
+print("Done")

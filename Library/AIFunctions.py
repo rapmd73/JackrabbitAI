@@ -279,7 +279,7 @@ class Agent:
 
     # Set the Persona Config location
 
-    def SetPersonaConfig(pcfg):
+    def SetPersonaConfig(self,pcfg):
         self.PersonaConfig=pcfg
 
     # Change the engine
@@ -979,6 +979,7 @@ class Agent:
 
             # AI error, such as prohibited content, breaks retry loop
             if self.AIError:
+                self.response=None
                 break
 
             # main retry level
@@ -1124,7 +1125,7 @@ class Agent:
                 else:
                     break
 
-            if self.maxrespsize>0 and len(self.response)>self.maxrespsize:
+            if self.response and self.maxrespsize>0 and len(self.response)>self.maxrespsize:
                 time.sleep(self.maxrespretrytimeout)
                 if msr<self.maxrespretry:
                     msr+=1
