@@ -17,6 +17,10 @@
 # example: employ or product sharding can be A-Z or AA-ZZ or even timestamp
 # based (daily or monthy).
 
+# CRITICAL: Application locking and database locking are VERY different. The
+# locking here has ONE purpose: Protect the data the library writes.  The
+# application is responsible for NOT corrupting its pipline.
+
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
 sys.path.append('/home/JackrabbitDLM')
@@ -33,9 +37,9 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class JackrabbitDB:
-    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=300,Rebuild=True):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=300,ReadOnly=False):
         # Main database
-        self.RebuildIndexes=Rebuild
+        self.ReadOnlyIndexes=ReadOnly
         self.syncDB=syncDB
         self.syncIDX=syncIDX
         # Name of database becomes the directory name on disk
@@ -71,6 +75,11 @@ class JackrabbitDB:
     def AlwaysLock(func):
         def wrapper(self, *args, **kwargs):
             expire=getattr(self, 'expire', 300)  # Read at RUNTIME
+
+            # Bypass locking, ONLY SAFE FOR READ ONLY FUNCTIONS
+
+            if self.ReadOnlyIndexes:
+                return func(self, *args, **kwargs)
 
             # if its already locked, not the function responsible for the lock.
             # Just run the function.
@@ -139,7 +148,6 @@ class JackrabbitDB:
 
     # Verify the record hash as stable. Argument COULD be JSON or JSONL
 
-    @AlwaysLock
     def VerifyBlake(self,record):
         if isinstance(record,dict):
             # Do NOT damage the original. CRITICAL!
@@ -202,7 +210,6 @@ class JackrabbitDB:
 
     # Add index file
 
-    @AlwaysLock
     def AddIndex(self,idx):
         # Alread added, nothing to do.
         if idx in self.dbIndex:
@@ -210,6 +217,11 @@ class JackrabbitDB:
 
         # Register index path
         self.dbIndex[idx]=f"{self.dbDir}/Index.{idx}.JIDX"
+
+        # In ReadOnly state, accept current disk condition
+        if self.ReadOnlyIndexes:
+            return True
+
         # Build index from existing data
         self.CheckSingleIndex(idx)
         if self.Error:
@@ -225,16 +237,17 @@ class JackrabbitDB:
         if idx not in self.dbIndex:
             return False
 
-        fidx = self.dbIndex[idx].replace("|", ".")
-        if os.path.exists(fidx) and delete:
-            os.remove(fidx)
+        # NO file manipulation in ReadOnly
+        if not self.ReadOnlyIndexes:
+            fidx = self.dbIndex[idx].replace("|", ".")
+            if os.path.exists(fidx) and delete:
+                os.remove(fidx)
         self.dbIndex.pop(idx,None)
         self.dbCursor.pop(idx,None)
         return True
 
     # Reload the cursors from disk.
 
-    @AlwaysLock
     def ReloadCursor(self,cursor,force=False):
         reload=False
         fidx=self.dbIndex[cursor].replace("|",".")
@@ -257,7 +270,6 @@ class JackrabbitDB:
 
     # Reset cursor. 0 is start, -1 is end.
 
-    @AlwaysLock
     def SetCursor(self,cursor,pos=None):
         if cursor not in self.dbIndex:
             raise Exception('Index not loaded: cursor')
@@ -299,7 +311,6 @@ class JackrabbitDB:
 
     # Get cursor. Return both key and offset
 
-    @AlwaysLock
     def GetCursor(self,cursor):
         if cursor not in self.dbIndex:
             raise Exception('Index not loaded: cursor')
@@ -324,7 +335,6 @@ class JackrabbitDB:
 
     # Get the next record
 
-    @AlwaysLock
     def Next(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
         if idx=={} or pos>=len(self.dbCursor[cursor]["Entries"])-1:
@@ -335,7 +345,6 @@ class JackrabbitDB:
 
     # Get the previous record
 
-    @AlwaysLock
     def Previous(self,cursor):
         pos,idx=self.GetCursor(cursor=cursor)
         if idx=={} or pos<=0:
@@ -349,6 +358,10 @@ class JackrabbitDB:
 
     @AlwaysLock
     def Add(self,record):
+        # Bypass locking, FORCE READONLY
+        if self.ReadOnlyIndexes:
+            return None, None
+
         self.CheckIndexes()
         if self.Error:
             raise Exception(f"Index stability check failed: {self.Error}")
@@ -377,6 +390,10 @@ class JackrabbitDB:
     @AlwaysLock
     def Update(self,offset,record,override=False):
         if record is None:
+            return None, None
+
+        # Bypass locking, FORCE READONLY
+        if self.ReadOnlyIndexes:
             return None, None
 
         # Get versions and add to latest update
@@ -415,7 +432,6 @@ class JackrabbitDB:
 
     # Find offset in tombstone list
 
-    @AlwaysLock
     def CheckTombstones(self,offset):
         for ts in self.dbTombstones:
             if offset==ts[0]:
@@ -426,6 +442,10 @@ class JackrabbitDB:
     @AlwaysLock
     def Delete(self,offset=None):
         if offset is None:
+            return False
+
+        # Bypass locking, FORCE READONLY
+        if self.ReadOnlyIndexes:
             return False
 
         # Verify old record, boundary start/Blake3
@@ -449,9 +469,7 @@ class JackrabbitDB:
         return True
 
     # Read a record at a position
-    @AlwaysLock
     def Read(self,offset,override=False):
-        self.dbLock.Lock(expire=self.expire)
         fh=open(self.dbName,"rb")
         fh.seek(offset,os.SEEK_SET)
         line=fh.readline()
@@ -509,7 +527,6 @@ class JackrabbitDB:
     # An example would be { "Keywords": [Word1, word2] }
     # AlwaysLock, in this case, just serves to reset the lock timeout
 
-    @AlwaysLock
     def BuildIndexEntries(self, idx, record, ptr):
         entries = []
         if "|" in idx:
@@ -612,7 +629,6 @@ class JackrabbitDB:
     # Sorting an unknown number of keys is problematic, so we build ONE mater key,
     # most significant to least significant and sort that.
 
-    @AlwaysLock
     def SortIndex(self, entries, idx):
         # Figure out the reverse map from the index
         rmap=[]
@@ -712,7 +728,7 @@ class JackrabbitDB:
     @AlwaysLock
     def RebuildIndex(self,idx):
         # No DB, nothing to check.
-        if not os.path.exists(self.dbName) or self.RebuildIndexes==False:
+        if not os.path.exists(self.dbName) or self.ReadOnlyIndexes:
             return
 
         # Force rebuild
@@ -768,7 +784,6 @@ class JackrabbitDB:
 
     # Verify the integrity of the database
 
-    @AlwaysLock
     def VerifyDatabase(self,display=False):
         # No DB, nothing to check.
         if not os.path.exists(self.dbName):
@@ -819,7 +834,7 @@ class JackrabbitDB:
     @AlwaysLock
     def PackDatabase(self,idx=None,RemoveCorrupt=False):
         # No DB, nothing to check.
-        if not os.path.exists(self.dbName):
+        if not os.path.exists(self.dbName) or self.ReadOnlyIndexes:
             return False
 
         # Make sure the work file does NOT exist
@@ -885,7 +900,6 @@ class JackrabbitDB:
 
     # Linear (brute force) search
 
-    @AlwaysLock
     def LinearIndexSearch(self,idx,record):
         # Index: { "Key":"/bin/bash", "Offset":"123" }
         # Read the actual index into a list
@@ -913,7 +927,6 @@ class JackrabbitDB:
     # Search inde records text ANYWHRE in the index key: search bash,
     # finds rbash.
 
-    @AlwaysLock
     def LinearContainsSearch(self, idx, substr):
         fidx = self.dbIndex[idx].replace("|", ".")
         if not os.path.exists(fidx):
@@ -934,7 +947,6 @@ class JackrabbitDB:
 
     # Binary search.  Really nice is index is already sorted. record[] is JSON
 
-    @AlwaysLock
     def BinaryIndexSearch(self, idx, record):
         fidx=self.dbIndex[idx].replace("|", ".")
         entries=FF.ReadFile2List(fidx,Unique=False)
@@ -967,7 +979,6 @@ class JackrabbitDB:
     # Search a binary index for a prefix. Indexes MUST be unique, but
     # some thing might bot be, like filename or keyword.
 
-    @AlwaysLock
     def BinaryPrefixSearch(self, idx, prefix):
         # Find ALL entries where Key starts with prefix.
         # idx = "Keywords|ID", prefix = "bombs|"
@@ -1003,7 +1014,6 @@ class JackrabbitDB:
 
     # Blind search for a string in all indexes
 
-    @AlwaysLock
     def SearchContains(self,srch):
         self.Error=None
         results=[]
@@ -1029,7 +1039,6 @@ class JackrabbitDB:
     # Walk each record of the database and call a support function, could
     # be a verification, backup, so on.
 
-    @AlwaysLock
     def Walk(self, idx, callback,override=False):
         if idx not in self.dbIndex:
             raise Exception(f"Index not loaded: {idx}")
@@ -1100,6 +1109,7 @@ def TestDB():
         stime=time.time()
         db.Add(nr)
         etime=time.time()
+        #print(etime-stime)
         if db.Error and db.Error!="Duplicate":
             print(f"{db.Error} {nr['File']}")
 
