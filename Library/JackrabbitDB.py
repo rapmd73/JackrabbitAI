@@ -1009,7 +1009,7 @@ class JackrabbitDB:
         results = []
         for i in range(lo, len(entries)):
             kv = json.loads(entries[i])
-            if kv['Key'].startswith(prefix):
+            if kv['Key'].lower().startswith(prefix.lower()):
                 results.append(kv['Offset'])
             else:
                 break
@@ -1031,7 +1031,7 @@ class JackrabbitDB:
                     except Exception as err:
                         continue
                     # If srch string found, add to results list
-                    if srch in kvtbl['Key'] and kvtbl['Key'] not in results:
+                    if srch.lower() in kvtbl['Key'].lower and kvtbl['Key'].lower() not in results:
                         kvtbl['SearchIndex']=idx
                         results.append(kvtbl)
 
