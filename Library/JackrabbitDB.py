@@ -591,6 +591,7 @@ class JackrabbitDB:
         s = str(p).strip()
         if s == '':
             return (1, 0.0, '')            # empty -> string-like
+
         try:
             # safe parse of Python literals (integers, floats, complex like
             # '2j', underscores allowed)
@@ -627,7 +628,8 @@ class JackrabbitDB:
         return tuple(tlist)
 
     # Sorting an unknown number of keys is problematic, so we build ONE mater key,
-    # most significant to least significant and sort that.
+    # most significant to least significant and sort that. CRITICAL: index key
+    # MUST be a string.
 
     def SortIndex(self, entries, idx):
         # Figure out the reverse map from the index
@@ -643,7 +645,7 @@ class JackrabbitDB:
         for entry in entries:
             tl=[]
             try:
-                parts=json.loads(entry)['Key'].split("|")
+                parts=str(json.loads(entry)['Key']).split("|")
             except Exception as err:
                 tl.append([(2, 0.0, ''),entry])
                 continue
@@ -764,6 +766,7 @@ class JackrabbitDB:
             for k in idx.split("|"):
                 if k.lstrip("!") not in record:
                     nf=True
+
             if nf==True:
                 # This should have been a "no brainer", but is was an
                 # absolute nightmare to debug.
@@ -778,8 +781,8 @@ class JackrabbitDB:
         ####> Problem is index is sent in compound. This is BROKE. it sees the
         ####> ENTIRE list, not individual columns.
 
-        entries = self.SortIndex(entries,idx)
-        fidx = self.dbIndex[idx].replace("|", ".")
+        entries=self.SortIndex(entries,idx)
+        fidx=self.dbIndex[idx].replace("|", ".")
         FF.WriteList2File(fidx, entries, sync=self.syncIDX)
 
     # Verify the integrity of the database
@@ -955,7 +958,7 @@ class JackrabbitDB:
 
         # Build search key
         if "|" in idx:
-            target="|".join(str(record[k]) for k in idx.split("|"))
+            target="|".join(str(record[k.lstrip("!")]) for k in idx.split("|"))
         else:
             target=str(record[idx])
 
