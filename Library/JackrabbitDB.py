@@ -561,7 +561,7 @@ class JackrabbitDB:
                 val = "|".join(combo)
                 entries.append(json.dumps({"Key": val, "Offset": ptr}))
         else:
-            raw = record.get(idx,None)
+            raw = record.get(idx.lstrip("!"),None)
             if isinstance(raw, list):
                 for elem in raw:
                     entries.append(json.dumps({"Key": str(elem), "Offset": ptr}))
@@ -668,7 +668,6 @@ class JackrabbitDB:
     @AlwaysLock
     def CheckDuplicates(self,record):
         self.Error=None
-        dup=False
         # We need to walk every index file
         for idx in self.dbIndex.keys():
             # Skip missing keys
@@ -1031,7 +1030,7 @@ class JackrabbitDB:
                     except Exception as err:
                         continue
                     # If srch string found, add to results list
-                    if srch.lower() in kvtbl['Key'].lower and kvtbl['Key'].lower() not in results:
+                    if srch.lower() in kvtbl['Key'].lower() and kvtbl['Key'].lower() not in results:
                         kvtbl['SearchIndex']=idx
                         results.append(kvtbl)
 
