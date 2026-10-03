@@ -386,9 +386,13 @@ class JackrabbitDB:
         return ptr,record
 
     # Update: append new record.  turn old record into tombstones.
+    # Pruning:
+    #   -1 is NO pruning
+    #   0 is NO versions
+    #   >0 is the number of versions to keep.
 
     @AlwaysLock
-    def Update(self,offset,record,override=False):
+    def Update(self,offset,record,override=False,prune=-1):
         if record is None:
             return None, None
 
@@ -402,10 +406,25 @@ class JackrabbitDB:
             raise Exception(f"Corruption: {offset}/{record}")
         vc=oldrec.pop('jrdbVersionCount',0)
         vers=oldrec.pop('jrdbVersions',[])
-        vers.append(oldrec)
-        record['jrdbVersions']=vers
-        record['jrdbVersionCount']=len(vers)
+        # record could have version history BEFORE deciding no history.
+        if prune==0:
+            if vers: # Do we actually have something to log?
+                self.WriteTransaction(f"PRUNE:{prune}",record)
+                record.pop('jrdbVersions',None)
+                record.pop('jrdbVersionCount',None)
+        # Pruning logic
+        else:
+            vers.append(oldrec)
+            if prune>0:
+                vers=vers[-prune:]
+            record['jrdbVersions']=vers
+            record['jrdbVersionCount']=len(vers)
+        # If we prune, when was the last time?
+        if prune>-1:
+            record['jrdbPruned']=time.time()
+        # ALWAYS reecord when the record was updated
         record['jrdbUpdated']=time.time()
+
         # The old hash MUST be removed before calculating the new hash
         # MUST happen before write to disk.
         while 'jrdbBlake' in record:

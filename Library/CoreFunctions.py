@@ -434,3 +434,10 @@ def GetID(s=37,e=73):
     if s!=e:
         l=random.randrange(min(s,e),max(s,e))
     return secrets.token_urlsafe(l)
+
+# Remove special characters, specific to AI filters for tags or keywords
+
+def RemoveSpecialCharacters(text):
+    characters_to_remove = r"""!@#$%^&*()-_=+{}|[]\:;,./<>?'""" + '"'
+    return text.translate(str.maketrans("", "", characters_to_remove))
+
