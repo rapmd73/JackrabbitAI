@@ -684,7 +684,7 @@ class JackrabbitDB:
             nlist.append(slist[i][-1])
         return nlist
 
-    @AlwaysLock
+#    @AlwaysLock
     def CheckDuplicates(self,record):
         self.Error=None
         # We need to walk every index file

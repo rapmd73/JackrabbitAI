@@ -97,12 +97,13 @@ def AppendFile(fname,text,sync=False):
 
 @DF.function_trapper(None)
 def WriteFile(fn,data,sync=False):
-    fh=open(fn,'w')
+    fh=open(fn+'.tmp','w')
     fh.write(data)
     if sync:
         fh.flush()
         os.fsync(fh.fileno())
     fh.close()
+    os.replace(fn+'.tmp',fn)
 
 # Write data at a specific location in a file.
 

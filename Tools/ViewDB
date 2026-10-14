@@ -144,4 +144,4 @@ if __name__ == "__main__":
         print(f"Example: {sys.argv[0]} /home/Newshound/DataStorage/JRDB/NHDB ID")
         print(f"         {sys.argv[0]} /home/Newshound/DataStorage/JRDB/NHDB Category|ID")
         sys.exit(1)
-    curses.wrapper(main, sys.argv[1], sys.argv[2])
+    curses.wrapper(main, sys.argv[1], sys.argv[2].replace('\\',''))
