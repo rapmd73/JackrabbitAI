@@ -258,6 +258,69 @@ def ScrapingAnt(url,userhome=None):
 
 @DF.function_trapper(None)
 def JinaAI(url, ua=None):
+    if not isinstance(url, str):
+        return None
+
+    url = url.strip()
+
+    if not url.startswith(("http://", "https://")):
+        return None
+
+    userAgent = (
+        ua.strip()
+        if isinstance(ua, str) and ua.strip()
+        else (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/150.0.0.0 Safari/537.36 "
+            "NewshoundAI/1.0"
+        )
+    )
+
+    headers = {
+        "Accept": "application/json",
+        "X-Engine": "direct",
+        "X-Return-Format": "html",
+        "X-Retain-Images": "none",
+        "X-User-Agent": userAgent,
+    }
+
+    reader_url = "https://r.jina.ai/" + url
+
+    try:
+        response = requests.get(
+            reader_url,
+            headers=headers,
+            timeout=90,
+        )
+    except requests.RequestException:
+        return None
+
+    if response.status_code != 200:
+        return None
+
+    try:
+        payload = response.json()
+    except ValueError:
+        content = response.text
+        return content.strip() if content and content.strip() else None
+
+    data = payload.get("data")
+
+    if not isinstance(data, dict):
+        return None
+
+    content = data.get("content")
+
+    if not isinstance(content, str):
+        return None
+
+    content = content.strip()
+
+    return content if content else None
+
+@DF.function_trapper(None)
+def DirectURL(url, ua=None):
     # Set the user agent
     userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     if ua!=None and ua.strip()!='':
@@ -268,8 +331,10 @@ def JinaAI(url, ua=None):
         "X-Return-Format": "html",
         "X-User-Agent": userAgent }
 
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers,timeout=60)
 
+    if response.status_code!=200:
+        return None
     return response.text
 
 # FireCrawl
