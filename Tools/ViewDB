@@ -5,9 +5,10 @@
 # 2024 Copyright © Robert APM Darin
 # All rights reserved unconditionally.
 
-# ViewDB — JackrabbitDB curses viewer: FAST, sorted headers, one-time scan
+# ViewDB — JackrabbitDB curses viewer with live record refresh
 
 import sys
+import os
 sys.path.append('/home/JackrabbitAI/Library')
 import curses
 import json
@@ -17,21 +18,22 @@ import FileFunctions as FF
 
 FIELD_W = 20
 
+
 def get_all_fields(db):
     """Single full scan - returns sorted field list."""
     fields = set()
-    fh = open(db.dbName, "r")
-    for line in fh:
-        try:
-            rec = json.loads(line)
-            fields.update(rec.keys())
-        except:
-            continue
-    fh.close()
+    with open(db.dbName, "r") as fh:
+        for line in fh:
+            try:
+                rec = json.loads(line)
+                fields.update(rec.keys())
+            except Exception:
+                continue
     return sorted(fields)
 
+
 def load_records(db, fields, index_name):
-    """Load all records once."""
+    """Load records and retain their index identity for live refreshes."""
     records = []
     idx_file = db.dbIndex.get(index_name)
     if not idx_file:
@@ -40,35 +42,91 @@ def load_records(db, fields, index_name):
     entries = FF.ReadFile2List(idx_path, Unique=False)
     for entry in entries:
         try:
-            e = json.loads(entry)
-            offset = e['Offset']
-        except:
+            index_entry = json.loads(entry)
+            offset = index_entry['Offset']
+        except Exception:
             continue
         rec = db.Read(offset)
         if rec:
-            records.append({k: rec.get(k, "") for k in fields})
+            records.append({
+                "offset": offset,
+                "key": index_entry.get("Key", ""),
+                "record": {k: rec.get(k, "") for k in fields},
+            })
     return records
+
+
+def file_signature(path):
+    """Return a signature that changes when a file is rewritten or resized."""
+    try:
+        stat = os.stat(path)
+        return stat.st_mtime_ns, stat.st_size, getattr(stat, "st_ino", 0)
+    except OSError:
+        return None
+
+
+def record_identity(item):
+    """Return the stable identity used to preserve the selected row.
+
+    JackrabbitDB.Update appends the new version at a different offset, so an
+    offset cannot be used as the identity.  ID is the normal database key;
+    the index key is the safe fallback for indexes without an ID field.
+    """
+    rec = item["record"]
+    for name in ("ID", "id"):
+        value = rec.get(name, "")
+        if value != "":
+            return (name, str(value))
+    return ("index", str(item.get("key", "")))
+
+
+def same_record_position(old_records, new_records, old_row):
+    """Keep the selected logical record's row, or clamp after deletion."""
+    if not new_records:
+        return 0
+    if not old_records or old_row < 0 or old_row >= len(old_records):
+        return min(old_row, len(new_records) - 1)
+
+    old_identity = record_identity(old_records[old_row])
+    # Preserve occurrence too, since a list-valued index can contain repeats.
+    occurrence = sum(
+        record_identity(item) == old_identity
+        for item in old_records[:old_row + 1]
+    )
+    matches = [
+        i for i, item in enumerate(new_records)
+        if record_identity(item) == old_identity
+    ]
+    if matches:
+        return matches[min(occurrence, len(matches)) - 1]
+
+    # The current record was deleted. Keep its numeric row where possible;
+    # at the end, move to the new last record.
+    return min(old_row, len(new_records) - 1)
+
 
 def fmt_val(v):
     if isinstance(v, (list, dict)):
         return json.dumps(v, ensure_ascii=False)
     return str(v)
 
+
 def main(stdscr, db_path, index_name):
     curses.curs_set(0)
-    stdscr.nodelay(False)
+    # Poll periodically so external database changes are noticed without
+    # requiring keyboard input.  A timeout avoids a busy loop.
+    stdscr.timeout(250)
     stdscr.keypad(True)
 
     db = JackrabbitDB(db_path, idx=[index_name])
 
-    # ONE full scan at startup
+    # ONE full scan at startup; field layout remains stable while viewing.
     fields = get_all_fields(db)
     if not fields:
         stdscr.addstr(0, 0, "No fields found")
         stdscr.getch()
         return
 
-    # Load all records once
     records = load_records(db, fields, index_name)
     if not records:
         stdscr.addstr(0, 0, f"No records in index '{index_name}'")
@@ -77,8 +135,41 @@ def main(stdscr, db_path, index_name):
 
     col_start = 0
     row = 0
-
+    db_sig = file_signature(db.dbName)
+    idx_path = db.dbIndex[index_name].replace("|", ".")
+    idx_sig = file_signature(idx_path)
     while True:
+        # Updates and deletes are append/rewrite operations.  Only rescan when
+        # either source file changed, and preserve the selected logical record.
+        new_db_sig = file_signature(db.dbName)
+        new_idx_sig = file_signature(idx_path)
+        if new_db_sig != db_sig or new_idx_sig != idx_sig:
+            h, w = stdscr.getmaxyx()
+            stdscr.addstr(h - 1, 0, "Updating records..."[:w - 1])
+            stdscr.refresh()
+            # Keep the notice visible long enough to be observable even when
+            # the reload itself completes very quickly.
+            curses.napms(100)
+
+            old_records = records
+            old_row = row
+            if new_db_sig != db_sig:
+                # This also notices external updates before the index catches
+                # up and lets JackrabbitDB rebuild a stale index if necessary.
+                db.CheckIndexes()
+            records = load_records(db, fields, index_name)
+            row = same_record_position(old_records, records, old_row)
+            db_sig = file_signature(db.dbName)
+            idx_sig = file_signature(idx_path)
+            if not records:
+                stdscr.clear()
+                stdscr.addstr(0, 0, f"No records in index '{index_name}'")
+                stdscr.refresh()
+                key = stdscr.getch()
+                if key == ord('q'):
+                    break
+                continue
+
         h, w = stdscr.getmaxyx()
         max_rows = h - 2
 
@@ -102,13 +193,20 @@ def main(stdscr, db_path, index_name):
             r = row - (max_rows // 2) + i
             if r < 0 or r >= len(records):
                 continue
-            rec = records[r]
-            line = "".join(f"{fmt_val(rec.get(f, '')).replace('\n','.')[:FIELD_W]:<{FIELD_W}} " for f in visible_fields)
+            rec = records[r]["record"]
+            line = "".join(
+                f"{fmt_val(rec.get(f, '')).replace(chr(10), '.')[:FIELD_W]:<{FIELD_W}} "
+                for f in visible_fields
+            )
             y = i + 1
             attr = curses.A_REVERSE if r == row else 0
             stdscr.addstr(y, 0, line[:w-1], attr)
 
-        status = f"Index: {index_name}  Row {row+1}/{len(records)}  Fields {col_start+1}-{col_start+len(visible_fields)}/{len(fields)}  q=quit ,=left .=right p=up n=down"
+        status = (
+            f"Index: {index_name}  Row {row+1}/{len(records)}  "
+            f"Fields {col_start+1}-{col_start+len(visible_fields)}/{len(fields)}  "
+            f"q=quit ,=left .=right p=up n=down"
+        )
         stdscr.addstr(h-1, 0, status[:w-1], curses.A_DIM)
 
         stdscr.refresh()
@@ -144,4 +242,4 @@ if __name__ == "__main__":
         print(f"Example: {sys.argv[0]} /home/Newshound/DataStorage/JRDB/NHDB ID")
         print(f"         {sys.argv[0]} /home/Newshound/DataStorage/JRDB/NHDB Category|ID")
         sys.exit(1)
-    curses.wrapper(main, sys.argv[1], sys.argv[2].replace('\\',''))
+    curses.wrapper(main, sys.argv[1], sys.argv[2].replace('\\', ''))

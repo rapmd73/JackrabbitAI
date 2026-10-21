@@ -103,7 +103,10 @@ def WriteFile(fn,data,sync=False):
         fh.flush()
         os.fsync(fh.fileno())
     fh.close()
-    os.replace(fn+'.tmp',fn)
+    if os.path.exists(fn):
+        os.replace(fn+'.tmp',fn)
+    else:
+        os.rename(fn+'.tmp',fn)
 
 # Write data at a specific location in a file.
 

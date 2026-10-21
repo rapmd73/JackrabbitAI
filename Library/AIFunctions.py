@@ -1176,17 +1176,14 @@ class Agent:
         # Required base parameters
         params={ "model": model, "messages": messages, "timeout": timeout }
 
-        if 'gpt-5' in model:
-            if 'nano' in model or 'mini' in model or model=='gpt-5':
-                params['reasoning_effort']='minimal'
-            else:
-                if 'chat' not in model:
-                    params['reasoning_effort']='none'
-
         # Add temperature and frequency penalty
-        if 'chat' in model or 'gpt-5' not in model:
+        if 'chat' in model \
+        or ('gpt-5' not in model and 'gpt-6' not in model):
+            print(model)
             params['temperature']=temperature
             params['frequency_penalty']=freqpenalty
+        elif 'gpt-6' in model or 'gpt-5' in model:
+            params['reasoning_effort']='low'
 
         clientAI=openai.OpenAI(api_key=apikey)
         try:
