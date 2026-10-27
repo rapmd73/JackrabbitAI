@@ -48,7 +48,8 @@ class JackrabbitDB:
         self.dbTransaction=f"{self.dbDir}/Transaction.log"
         # locks have auto expire
         self.expire=expire
-        self.dbLock=w1=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7)
+        self.dbLock={}  # Extablish dict for main and record locks
+        self.dbLock['jrdbMAIN']=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7)
         # deleted records, time outs.
         self.dbTombstones=[]
         # Report errors, including duplicates
@@ -56,15 +57,15 @@ class JackrabbitDB:
         # Create cursors
         self.dbCursor={}
 
+        # Make database directory
+        FF.mkdir(self.dbDir)
+
         # Create index table
         self.dbIndex={}
+        self.AddIndex("jrdbID") # universal db id to insure record protection. REQUIRED!
         if idx:
             for i in idx:
                 self.AddIndex(i)
-#                self.dbIndex[i]=f"{self.dbDir}/Index.{i}.JIDX"
-
-        # Make database directory
-        FF.mkdir(self.dbDir)
 
         # Force rebuild the index files
         self.CheckIndexes()
@@ -103,14 +104,19 @@ class JackrabbitDB:
     # The goal here is a consistent way for a calling program to mnage
     # the lock.
 
-    def IsLocked(self,acquire=False):
-        return self.dbLock.IsLocked(expire=self.expire, acquire=acquire).lower()
+    def IsLocked(self,acquire=False,id='jrdbMAIN'):
+        if id not in self.dbLock:
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
+        return self.dbLock[id].IsLocked(expire=self.expire, acquire=acquire).lower()
 
-    def Lock(self,expire=None):
+    def Lock(self,expire=None,id='jrdbMAIN'):
         if not expire:
             expire=getattr(self, 'expire', 300)  # Read at RUNTIME
 
-        status=self.dbLock.Lock(expire=expire)
+        if id not in self.dbLock:
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
+
+        status=self.dbLock[id].Lock(expire=expire)
 
         if status!="locked":
             self.Error=f"Lock failed: {status}"
@@ -118,20 +124,24 @@ class JackrabbitDB:
 
         return status
 
-    def Unlock(self):
-        return self.dbLock.Unlock()
+    def Unlock(self,id='jrdbMAIN'):
+        if id not in self.dbLock:
+            return "notfound"
+        res=self.dbLock[id].Unlock()
+        self.dbLock.pop(id,None)
+        return res
 
     # Brutal and unforgiving, but stable
-    def WaitLock(self):
+    def WaitLock(self,id='jrdbMAIN'):
+        if id not in self.dbLock:
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
+
         while True:
-            status=self.IsLocked(True)
+            status=self.IsLocked(True,id)
             if status!='notowner':
                 break
+            os.sched_yield()
             time.sleep(0.1) # sleep 1/10th second
-
-        if status!="locked":
-            self.Error=f"Lock failed: {status}"
-            raise Exception(self.Error)
 
         return status
 
@@ -368,6 +378,7 @@ class JackrabbitDB:
         if self.CheckDuplicates(record):
             return None, None
 
+        record['jrdbID']=CF.GetID(73,73)
         record['jrdbAdded']=time.time()
         record['jrdbBlake']=self.Blake(record)
         # Find next offset, recycle tombstones if possible
@@ -435,7 +446,7 @@ class JackrabbitDB:
         r=json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n'
         self.WriteTransaction("UPDATE",record)
         # Turn old record to tombstone
-        self.Delete(offset=offset)
+        self.Delete(offset=offset,InUpdate=True)
         # Write the new record
         if roa:
             # Recycle space
@@ -459,7 +470,7 @@ class JackrabbitDB:
 
     # Delete a record
     @AlwaysLock
-    def Delete(self,offset=None):
+    def Delete(self,offset=None,InUpdate=False):
         if offset is None:
             return False
 
@@ -473,7 +484,9 @@ class JackrabbitDB:
         if buf is None:
             raise Exception(f"Record damage as {offset}")
         buf=json.dumps(buf,sort_keys=True,separators=(',', ':'))  # STRIPS \n from count, which leave it in file
-        self.WriteTransaction("DELETE",buf)
+        # If we are updating, so that as primary, this is ONLY for deleting
+        if not InUpdate:
+            self.WriteTransaction("DELETE",buf)
         # Write the tombstone, take off \n. We need to fill exact space
         dashes="-"*(len(buf)) # REMEMBER no \n in count
         # Open for read/write
@@ -481,10 +494,11 @@ class JackrabbitDB:
         if not self.CheckTombstones(offset):
             # Processed, \n NOT included
             self.dbTombstones.append([offset,len(buf)+1])
-        # Rebuild indexes
-        self.CheckIndexes()
-        # Reset cursors
-        self.dbCursor={}
+        if not InUpdate:
+            # Rebuild indexes
+            self.CheckIndexes()
+            # Reset cursors
+            self.dbCursor={}
         return True
 
     # Read a record at a position
@@ -827,10 +841,10 @@ class JackrabbitDB:
                 record=json.loads(bline)
             except Exception as err:
                 ptr+=len(bline)
-                self.Error="VerifyDB JSON: {err}"
+                self.Error=f"VerifyDB JSON: {err}"
                 if display:
                     print(self.Error)
-                    print(bline.decode('utf-8'))
+                    print(bline)
                 continue
 
             # Verify record integrity. Required to mintain a full "NO
@@ -883,7 +897,7 @@ class JackrabbitDB:
             except Exception as err:
                 self.Error="VerifyDB JSON: {err}"
                 print(self.Error)
-                print(bline.decode('utf-8'))
+                print(bline)
                 continue
 
             # Check for duplicate idx
@@ -1068,24 +1082,50 @@ class JackrabbitDB:
         if not os.path.exists(fidx):
             return 0
 
-        entries = FF.ReadFile2List(fidx, Unique=False)
-        count = 0
+        entries=[]
 
-        for line in entries:
-            try:
-                kv = json.loads(line)
-            except Exception:
-                continue
+        count=0
+        mcount=0
+        maxCount=-1
+        oldmtime=0
+        while True:
+            if maxCount>0 and count>maxCount:
+                return count
 
-            offset = kv["Offset"]
-            record = self.Read(offset,override=override) # acquires lock, verifies Blake3
-            if record is None:
-                continue              # tombstone or corrupt
+            # Reload if mtime changes
+            mtime=os.path.getmtime(fidx)
+            if mtime!=oldmtime:
+                entries=FF.ReadFile2List(fidx, Unique=False)
+                oldmtime=mtime
+                if maxCount<0:
+                    maxCount=len(entries)
 
-            if not callback(self, record, offset):
-                break
-            count+=1
-        return count
+            for line in entries:
+                # if idx mtime changes, force break
+                mtime=os.path.getmtime(fidx)
+                if mtime!=oldmtime:
+                    break
+
+                try:
+                    kv = json.loads(line)
+                except Exception as err:
+                    continue
+
+                offset=kv["Offset"]
+                record=self.Read(offset,override=override) # acquires lock, verifies Blake3
+                if record is None:
+                    continue              # tombstone or corrupt
+
+                status=self.IsLocked(True,id=record['jrdbID'])
+                if status=="locked":
+                    result=callback(self, record, offset)
+                    self.Unlock(id=record['jrdbID'])
+                    if not result:
+                        return mcount
+                    mcount+=1
+                count+=1
+                os.sched_yield()
+        return mcount
 
 ###
 ### End library

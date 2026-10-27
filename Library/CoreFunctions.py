@@ -202,9 +202,6 @@ def ElasticSleep(s,Fuzzy=True):
             if n>MasterNice:
                 renice(n-1)
 
-        # Give up slice to kernal
-        os.sched_yield()
-
         # Convert lo into seconds
 
         i=int(d)
@@ -220,6 +217,8 @@ def ElasticSleep(s,Fuzzy=True):
         time.sleep(s+delay+throttle)
     else:
         time.sleep(s)
+    # Give up slice to kernal
+    os.sched_yield()
 
 # The `ElasticDelay` function calculates a dynamic delay based on the system's
 # current load average and CPU count. It retrieves the load average using
@@ -429,10 +428,13 @@ def SetRunningName(rn):
 # Generate an ID String
 
 def GetID(s=37,e=73):
-    random.seed(time.time())
+    if s<5:
+        s=37
+    if e<s:
+        e=73
     l=e
     if s!=e:
-        l=random.randrange(min(s,e),max(s,e))
+        l=random.randrange(min(s,e+1),max(s,e+1))
     return secrets.token_urlsafe(l)
 
 # Remove special characters, specific to AI filters for tags or keywords

@@ -118,7 +118,7 @@ def main(stdscr, db_path, index_name):
     stdscr.timeout(250)
     stdscr.keypad(True)
 
-    db = JackrabbitDB(db_path, idx=[index_name])
+    db = JackrabbitDB(db_path, idx=[index_name],ReadOnly=True)
 
     # ONE full scan at startup; field layout remains stable while viewing.
     fields = get_all_fields(db)

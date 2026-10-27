@@ -1055,6 +1055,8 @@ class Agent:
         if self.ModelLock:
             self.ModelLock.Unlock()
 
+        os.sched_yield()
+
         # response can be None
 
         # Profiling shows that reclaimation has NO significant impact. However, it
