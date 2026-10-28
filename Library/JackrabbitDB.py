@@ -136,13 +136,16 @@ class JackrabbitDB:
         if id not in self.dbLock:
             self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
 
+        stime=time.time()
         while True:
             status=self.IsLocked(True,id)
-            if status!='notowner':
+            if status!='notowner':  # Someone else has it locked
                 break
+            # if wait time expires
+            if (time.time()-stime)>self.expire:
+                return 'timeout'
             os.sched_yield()
             time.sleep(0.1) # sleep 1/10th second
-
         return status
 
     # Create a Blake hash. Argument is JSON. Test just incase JSONL is passed
@@ -1075,6 +1078,11 @@ class JackrabbitDB:
     # be a verification, backup, so on.
 
     def Walk(self, idx, callback,override=False):
+        # Can NOT walk a readonly index, MUST be adble to write NEW index
+        if self.ReadOnlyIndexes:
+            return 0
+
+        # Index **MUST** exist
         if idx not in self.dbIndex:
             raise Exception(f"Index not loaded: {idx}")
 
@@ -1082,50 +1090,52 @@ class JackrabbitDB:
         if not os.path.exists(fidx):
             return 0
 
-        entries=[]
+        # Add jrdbID and load the work index
+        idx+="|jrdbID"
+        self.AddIndex(idx)
+        fidx=self.dbIndex[idx].replace("|", ".")
+        entries=FF.ReadFile2List(fidx, Unique=False)
 
         count=0
-        mcount=0
-        maxCount=-1
-        oldmtime=0
-        while True:
-            if maxCount>0 and count>maxCount:
-                return count
+        keys=idx.split('|')
 
-            # Reload if mtime changes
-            mtime=os.path.getmtime(fidx)
-            if mtime!=oldmtime:
-                entries=FF.ReadFile2List(fidx, Unique=False)
-                oldmtime=mtime
-                if maxCount<0:
-                    maxCount=len(entries)
+        for line in entries:
+            try:
+                entry=json.loads(line)
+            except Exception as err:
+                continue
 
-            for line in entries:
-                # if idx mtime changes, force break
-                mtime=os.path.getmtime(fidx)
-                if mtime!=oldmtime:
-                    break
+            # Set up search record
+            srch={}
+            parts=entry['Key'].split('|') # Number of parts MUST always = # of keys
+            for i in range(len(keys)):
+                srch[keys[i]]=parts[i]
 
+            # Any status that is NOT 'locked' is simply skipped. May need to
+            # rethink this in the future.
+
+            status=self.WaitLock(id=parts[-1])
+            if status=="locked":
                 try:
-                    kv = json.loads(line)
+                    result=None
+                    offset=self.BinaryIndexSearch(idx,srch)
+                    if offset>-1:
+                        record=self.Read(offset)
+                        if record is not None:
+                            result=callback(self, record, offset)
+                        self.Unlock(id=parts[-1])
+                        if result:
+                            count+=1
+                    else:
+                        self.Unlock(id=parts[-1])
                 except Exception as err:
-                    continue
+                    print(f"Walk: {err}")
+                    self.Unlock(id=parts[-1])
+            os.sched_yield()
 
-                offset=kv["Offset"]
-                record=self.Read(offset,override=override) # acquires lock, verifies Blake3
-                if record is None:
-                    continue              # tombstone or corrupt
-
-                status=self.IsLocked(True,id=record['jrdbID'])
-                if status=="locked":
-                    result=callback(self, record, offset)
-                    self.Unlock(id=record['jrdbID'])
-                    if not result:
-                        return mcount
-                    mcount+=1
-                count+=1
-                os.sched_yield()
-        return mcount
+        # Purge old index
+        self.RemoveIndex(idx,delete=True)
+        return count
 
 ###
 ### End library
