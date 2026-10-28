@@ -993,9 +993,19 @@ class JackrabbitDB:
 
         # Build search key
         if "|" in idx:
-            target="|".join(str(record[k.lstrip("!")]) for k in idx.split("|"))
+            widx=[]
+            for k in idx.split("|"):
+                field=k.lstrip("!")
+                value=str(record[field])
+
+                if k.startswith("!"):
+                    value="!"+value
+                widx.append(value)
+            target = "|".join(widx)
         else:
-            target=str(record[idx])
+            target=str(record[idx.lstrip("!")])
+            if idx.startswith("!"):
+                target = "!"+target
 
         target=self.CompareAllKeys(target)
 
@@ -1003,75 +1013,171 @@ class JackrabbitDB:
         hi=len(entries)-1
         lo=0
         while lo<=hi:
-            mid=(lo+hi)//2
-            kvtbl=json.loads(entries[mid])
-            key=self.CompareAllKeys(kvtbl["Key"])
-            if key==target:
-                return kvtbl['Offset']
-            elif key<target:
-                lo=mid+1
+            mid = (lo + hi) // 2
+            kvtbl = json.loads(entries[mid])
+
+            candidate_parts=[]
+            index_parts=idx.split("|")
+            key_parts=kvtbl["Key"].split("|")
+
+            for i in range(len(index_parts)):
+                value=key_parts[i]
+                if index_parts[i].startswith("!"):
+                    value ="!"+value
+                candidate_parts.append(value)
+            candidate = "|".join(candidate_parts)
+            key = self.CompareAllKeys(candidate)
+
+            if key == target:
+                return kvtbl["Offset"]
+            elif key < target:
+                lo = mid + 1
             else:
-                hi=mid-1
+                hi = mid - 1
+
         return -1
 
     # Search a binary index for a prefix. Indexes MUST be unique, but
     # some thing might bot be, like filename or keyword.
 
     def BinaryPrefixSearch(self, idx, prefix):
-        # Find ALL entries where Key starts with prefix.
-        # idx = "Keywords|ID", prefix = "bombs|"
-        # Returns list of offsets (may be empty).
+        # Find all entries whose raw Key starts with prefix.
+        #
+        # Example:
+        #   idx    = "!jrdbAdded|ID"
+        #   prefix = "1730000000|"
 
         fidx = self.dbIndex[idx].replace("|", ".")
-        entries = FF.ReadFile2List(fidx, Unique=False)
+        entries = FF.ReadFile2List(
+            fidx,
+            Unique=False
+        )
+
         if not entries:
             return None
 
-        # Binary search for LEFTMOST entry >= prefix
-        target=self.CompareAllKeys(prefix)
-        lo=0
-        hi=len(entries) - 1
+        index_parts = idx.split("|")
+        prefix_parts = str(prefix).split("|")
+
+        # Apply the index direction to the prefix comparison key.
+        marked_prefix_parts = []
+
+        for i in range(len(prefix_parts)):
+            value = prefix_parts[i]
+
+            if i < len(index_parts):
+                if index_parts[i].startswith("!"):
+                    value = "!" + value
+
+            marked_prefix_parts.append(value)
+
+        marked_prefix = "|".join(marked_prefix_parts)
+        target = self.CompareAllKeys(marked_prefix)
+
+        # Find the first candidate according to the same direction
+        # used by SortIndex().
+        lo = 0
+        hi = len(entries) - 1
+
         while lo <= hi:
             mid = (lo + hi) // 2
-            kvtbl=json.loads(entries[mid])
-            key=self.CompareAllKeys(kvtbl["Key"])
-            if key>=target:
+            kvtbl = json.loads(entries[mid])
+
+            key_parts = str(kvtbl["Key"]).split("|")
+            marked_key_parts = []
+
+            for i in range(len(key_parts)):
+                value = key_parts[i]
+
+                if i < len(index_parts):
+                    if index_parts[i].startswith("!"):
+                        value = "!" + value
+
+                marked_key_parts.append(value)
+
+            marked_key = "|".join(marked_key_parts)
+            key = self.CompareAllKeys(marked_key)
+
+            if key >= target:
                 hi = mid - 1
             else:
                 lo = mid + 1
 
-        # lo = first entry >= prefix. Scan forward while prefix matches.
+        # Prefix matching uses the original stored keys.
+        # Direction markers are only for binary ordering.
         results = []
+
         for i in range(lo, len(entries)):
             kv = json.loads(entries[i])
-            if kv['Key'].lower().startswith(prefix.lower()):
-                results.append(kv['Offset'])
+            raw_key = str(kv["Key"])
+
+            if raw_key.lower().startswith(str(prefix).lower()):
+                results.append(kv["Offset"])
             else:
                 break
+
         return results
 
     # Blind search for a string in all indexes
 
-    def SearchContains(self,srch):
-        self.Error=None
-        results=[]
-        # We need to walk every index file
-        for idx in self.dbIndex.keys():
-            fidx=self.dbIndex[idx].replace("|",".")
-            if os.path.exists(fidx):
-                entries=FF.ReadFile2List(fidx,Unique=False)
-                for line in entries:
-                    try:
-                        kvtbl=json.loads(line)
-                    except Exception as err:
-                        continue
-                    # If srch string found, add to results list
-                    if srch.lower() in kvtbl['Key'].lower() and kvtbl['Key'].lower() not in results:
-                        kvtbl['SearchIndex']=idx
-                        results.append(kvtbl)
+    def SearchContains(self, srch):
+        self.Error = None
 
-        if results==[]:
+        search_text = str(srch).lower()
+        results = []
+        seen_ids = set()
+
+        for idx in self.dbIndex.keys():
+            # Do not search internal identity/work indexes.
+            if idx == "jrdbID":
+                continue
+
+            if idx.endswith("|jrdbID"):
+                continue
+
+            fidx = self.dbIndex[idx].replace("|", ".")
+            if not os.path.exists(fidx):
+                continue
+            entries = FF.ReadFile2List(fidx,Unique=False)
+
+            if not entries:
+                continue
+
+            for line in entries:
+                try:
+                    kvtbl=json.loads(line)
+                except Exception:
+                    continue
+
+                key = kvtbl["Key"]
+                if not isinstance(key, str):
+                    continue
+                if search_text not in key.lower():
+                    continue
+
+                offset=kvtbl["Offset"]
+                try:
+                    record = self.Read(offset)
+                except Exception:
+                    continue
+
+                if record is None:
+                    continue
+
+                record_id = record.get("jrdbID")
+
+                if record_id is not None:
+                    record_id = str(record_id)
+                    if record_id in seen_ids:
+                        continue
+                    seen_ids.add(record_id)
+
+                kvtbl["SearchIndex"]=idx
+                results.append(kvtbl)
+
+        if not results:
             return None
+
         return results
 
     # Walk each record of the database and call a support function, could
@@ -1109,14 +1215,15 @@ class JackrabbitDB:
             srch={}
             parts=entry['Key'].split('|') # Number of parts MUST always = # of keys
             for i in range(len(keys)):
-                srch[keys[i]]=parts[i]
+                srch[keys[i].lstrip("!")]=parts[i]
 
             # Any status that is NOT 'locked' is simply skipped. May need to
             # rethink this in the future.
 
-            status=self.WaitLock(id=parts[-1])
-            if status=="locked":
-                try:
+#            status=self.WaitLock(id=parts[-1])
+#            if status=="locked":
+            if 1==1:
+#                try:
                     result=None
                     offset=self.BinaryIndexSearch(idx,srch)
                     if offset>-1:
@@ -1128,9 +1235,9 @@ class JackrabbitDB:
                             count+=1
                     else:
                         self.Unlock(id=parts[-1])
-                except Exception as err:
-                    print(f"Walk: {err}")
-                    self.Unlock(id=parts[-1])
+#                except Exception as err:
+#                    print(f"Walk: {err}")
+#                    self.Unlock(id=parts[-1])
             os.sched_yield()
 
         # Purge old index
