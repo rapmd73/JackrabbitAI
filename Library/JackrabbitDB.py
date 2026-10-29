@@ -927,6 +927,9 @@ class JackrabbitDB:
             FF.AppendFile(packName,json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n',sync=self.syncDB)
         fh.close()
 
+        if self.Error:
+            return False
+
         try:
             os.replace(self.dbName,f"{self.dbName}.backup")
             os.replace(packName,self.dbName)
@@ -934,6 +937,7 @@ class JackrabbitDB:
             self.Error="Pack Failure"
         if self.Error:
             return False
+        CheckIndexes(force=True)
         return True
 
     # Linear (brute force) search
@@ -1018,7 +1022,7 @@ class JackrabbitDB:
 
             candidate_parts=[]
             index_parts=idx.split("|")
-            key_parts=kvtbl["Key"].split("|")
+            key_parts=str(kvtbl["Key"]).split("|")
 
             for i in range(len(index_parts)):
                 value=key_parts[i]
@@ -1183,7 +1187,7 @@ class JackrabbitDB:
     # Walk each record of the database and call a support function, could
     # be a verification, backup, so on.
 
-    def Walk(self, idx, callback,override=False):
+    def Walk(self, idx, callback,override=False,nojrdb=False):
         # Can NOT walk a readonly index, MUST be adble to write NEW index
         if self.ReadOnlyIndexes:
             return 0
@@ -1197,7 +1201,8 @@ class JackrabbitDB:
             return 0
 
         # Add jrdbID and load the work index
-        idx+="|jrdbID"
+        if not nojrdb:
+            idx+="|jrdbID"
         self.AddIndex(idx)
         fidx=self.dbIndex[idx].replace("|", ".")
         entries=FF.ReadFile2List(fidx, Unique=False)
@@ -1213,17 +1218,16 @@ class JackrabbitDB:
 
             # Set up search record
             srch={}
-            parts=entry['Key'].split('|') # Number of parts MUST always = # of keys
+            parts=str(entry['Key']).split('|') # Number of parts MUST always = # of keys
             for i in range(len(keys)):
                 srch[keys[i].lstrip("!")]=parts[i]
 
             # Any status that is NOT 'locked' is simply skipped. May need to
             # rethink this in the future.
 
-#            status=self.WaitLock(id=parts[-1])
-#            if status=="locked":
-            if 1==1:
-#                try:
+            status=self.WaitLock(id=parts[-1])
+            if status=="locked":
+                try:
                     result=None
                     offset=self.BinaryIndexSearch(idx,srch)
                     if offset>-1:
@@ -1235,9 +1239,9 @@ class JackrabbitDB:
                             count+=1
                     else:
                         self.Unlock(id=parts[-1])
-#                except Exception as err:
-#                    print(f"Walk: {err}")
-#                    self.Unlock(id=parts[-1])
+                except Exception as err:
+                    print(f"Walk: {err}")
+                    self.Unlock(id=parts[-1])
             os.sched_yield()
 
         # Purge old index
