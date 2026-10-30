@@ -50,6 +50,7 @@ class JackrabbitDB:
         self.expire=expire
         self.dbLock={}  # Extablish dict for main and record locks
         self.dbLock['jrdbMAIN']=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7)
+        self.lockDelta={} # track lock expirations to extend self.expire as needed.
         # deleted records, time outs.
         self.dbTombstones=[]
         # Report errors, including duplicates
@@ -87,11 +88,21 @@ class JackrabbitDB:
 
             status=self.IsLocked(False)
             if status=="locked":
+                # Reset expired timeout to MAX, prevents lock expiration DURING
+                # the call. Lock is NOT recursive or stacking. Relocking ONLY
+                # extends the epiration.
+                self.Lock()
                 return func(self, *args, **kwargs)
 
-            # If we are not the owner, we just wait our turn, break on any error.
+            # If we are not the owner, we just wait our turn. Timeouts are
+            # printed. Need a better way, but for now, this works to make sure the
+            # lock is OWNED by THIS process.
 
-            status=self.WaitLock()
+            status='timeout'
+            while status!='locked':
+                status=self.WaitLock()
+                if status=='timeout':
+                    print('lock timeout')
 
             try:
                 return func(self, *args, **kwargs)
@@ -107,7 +118,10 @@ class JackrabbitDB:
     def IsLocked(self,acquire=False,id='jrdbMAIN'):
         if id not in self.dbLock:
             self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
-        return self.dbLock[id].IsLocked(expire=self.expire, acquire=acquire).lower()
+        status=self.dbLock[id].IsLocked(expire=self.expire, acquire=acquire).lower()
+        if acquire and status=='locked':
+            self.lockDelta[id]=time.time()
+        return status
 
     def Lock(self,expire=None,id='jrdbMAIN'):
         if not expire:
@@ -116,11 +130,15 @@ class JackrabbitDB:
         if id not in self.dbLock:
             self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
 
-        status=self.dbLock[id].Lock(expire=expire)
+        status=self.dbLock[id].Lock(expire=expire).lower()
 
         if status!="locked":
             self.Error=f"Lock failed: {status}"
             raise Exception(self.Error)
+
+        # Do NOT reset start time of an existing lock
+        if id not in self.lockDelta:
+            self.lockDelta[id]=time.time()
 
         return status
 
@@ -129,7 +147,14 @@ class JackrabbitDB:
             return "notfound"
         res=self.dbLock[id].Unlock()
         self.dbLock.pop(id,None)
+        self.lockDelta.pop(id,None)
         return res
+
+    def Relock(self,id='jrdbMAIN'):
+        if (time.time()-self.lockDelta[id])>(self.expire/2):
+            print("Lock expiration doubled")
+            self.expire*=2
+        return (self.Lock(id=id).lower()=='locked')
 
     # Brutal and unforgiving, but stable
     def WaitLock(self,id='jrdbMAIN'):
@@ -202,6 +227,8 @@ class JackrabbitDB:
 
     @AlwaysLock
     def GetNextOffset(self, record):
+        return False,FF.GetFileSize(self.dbName)
+        """
         if isinstance(record, dict):
             rec=json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n'
         else:
@@ -220,6 +247,7 @@ class JackrabbitDB:
                     self.dbTombstones[i]=[offset+needed,length-needed]
                 return True,offset
         return False,FF.GetFileSize(self.dbName)
+        """
 
     # Add index file
 
@@ -540,6 +568,7 @@ class JackrabbitDB:
         # We need to walk every index file
         for idx in self.dbIndex.keys():
             self.UpdateSingleIndex(idx,ptr,record)
+            self.Relock()
 
     @AlwaysLock
     def UpdateSingleIndex(self,idx,ptr,record):
@@ -737,6 +766,7 @@ class JackrabbitDB:
         # We need to walk every index file
         for idx in self.dbIndex.keys():
             self.CheckSingleIndex(idx,force)
+            self.Relock()
 
     # Check Index age and force a rebuild if needed
 
@@ -775,6 +805,7 @@ class JackrabbitDB:
         ptr = 0
         fh = open(self.dbName, "rb")
         while True:
+            self.Relock()
             bline = fh.readline()
             # No more data
             if not bline:
@@ -812,9 +843,6 @@ class JackrabbitDB:
             entries.extend(self.BuildIndexEntries(idx,record,ptr))
             ptr+=len(bline)
         fh.close()
-
-        ####> Problem is index is sent in compound. This is BROKE. it sees the
-        ####> ENTIRE list, not individual columns.
 
         entries=self.SortIndex(entries,idx)
         fidx=self.dbIndex[idx].replace("|", ".")
@@ -887,6 +915,7 @@ class JackrabbitDB:
         self.Error=None
         fh=open(self.dbName,"r")
         while True:
+            self.Relock()
             bline=fh.readline()
             if not bline:
                 break
@@ -898,9 +927,10 @@ class JackrabbitDB:
             try:
                 record=json.loads(bline)
             except Exception as err:
-                self.Error="VerifyDB JSON: {err}"
+                self.Error=f"VerifyDB JSON: {err}"
                 print(self.Error)
-                print(bline)
+                if RemoveCorrupt:
+                    self.WriteTransaction("CORRUPT",bline)
                 continue
 
             # Check for duplicate idx
@@ -919,7 +949,7 @@ class JackrabbitDB:
                     self.WriteTransaction("CORRUPT",bline)
                 else:
                     self.Error="Corruption"
-                    raise Exception(f"Corruption: {bline.strip()}")
+                    raise Exception(f"Blake3 Corruption: {bline.strip()}")
 
             # Write out the new record
             if idx:
@@ -937,7 +967,6 @@ class JackrabbitDB:
             self.Error="Pack Failure"
         if self.Error:
             return False
-        CheckIndexes(force=True)
         return True
 
     # Linear (brute force) search
@@ -1233,7 +1262,7 @@ class JackrabbitDB:
                     if offset>-1:
                         record=self.Read(offset)
                         if record is not None:
-                            result=callback(self, record, offset)
+                            result=callback(self, record, offset,id=parts[-1])
                         self.Unlock(id=parts[-1])
                         if result:
                             count+=1
