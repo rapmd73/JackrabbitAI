@@ -766,7 +766,8 @@ class JackrabbitDB:
         # We need to walk every index file
         for idx in self.dbIndex.keys():
             self.CheckSingleIndex(idx,force)
-            self.Relock()
+            if not self.ReadOnlyIndexes:
+                self.Relock()
 
     # Check Index age and force a rebuild if needed
 
