@@ -37,7 +37,7 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class JackrabbitDB:
-    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=300,ReadOnly=False):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=900,ReadOnly=False):
         # Main database
         self.ReadOnlyIndexes=ReadOnly
         self.syncDB=syncDB
@@ -152,8 +152,8 @@ class JackrabbitDB:
 
     def Relock(self,id='jrdbMAIN'):
         if (time.time()-self.lockDelta[id])>(self.expire/2):
-            print("Lock expiration doubled")
             self.expire*=2
+            print(f"Lock expiration doubled: {self.expire}")
         return (self.Lock(id=id).lower()=='locked')
 
     # Brutal and unforgiving, but stable

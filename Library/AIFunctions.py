@@ -128,7 +128,7 @@ class Agent:
 
     # RateLimit is 2 seconds
 
-    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=True,RateLimitWait=2000,UseEKB=True,UseCAVM=True):
+    def __init__(self,engine,model,maxtokens,encoding=None,persona=None,user=None,userhome=None,usertokens=None,maxmem=100,freqpenalty=0.73,temperature=0.31,seed=0,timeout=300,maxmodelexpire=900,reset=False,save=True,timing=True,isolation=False,retry=7,retrytimeout=37,maxrespsize=0,maxrespretry=7,maxrespretrytimeout=37,UseOpenAI=False,UseRateLimit=True,RateLimitWait=2000,UseEKB=True,UseCAVM=False):
         self.PersonaConfig="/home/JackrabbitAI/Personas"
 
         self.SystemRoleDefault= \

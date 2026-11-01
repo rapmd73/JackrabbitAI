@@ -18,7 +18,10 @@ if len(sys.argv)<2:
     sys.exit(0)
 
 db=JackrabbitDB(sys.argv[1])
-print(f"Database verified: {db.VerifyDatabase()}")
-print("Packing...")
-db.PackDatabase(RemoveCorrupt=True)
-print("Done")
+vdb=db.VerifyDatabase()
+print(f"Database verified: {vdb}")
+
+#if vdb:
+#    print("Packing...")
+#    db.PackDatabase() #RemoveCorrupt=True)
+#    print("Done")
