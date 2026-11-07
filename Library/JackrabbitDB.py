@@ -280,7 +280,7 @@ class JackrabbitDB:
 
         # NO file manipulation in ReadOnly
         if not self.ReadOnlyIndexes:
-            fidx = self.dbIndex[idx].replace("|", ".")
+            fidx=self.dbIndex[idx].replace("|", ".")
             if os.path.exists(fidx) and delete:
                 os.remove(fidx)
         self.dbIndex.pop(idx,None)
@@ -361,7 +361,7 @@ class JackrabbitDB:
             offset=self.SetCursor(cursor,0)
 
         # Check staleness
-        fidx = self.dbIndex[cursor].replace("|", ".")
+        fidx=self.dbIndex[cursor].replace("|", ".")
         if os.path.exists(fidx) and self.dbCursor[cursor]['idxMtime']<os.path.getmtime(fidx):
             self.SetCursor(cursor,0)
 
@@ -572,20 +572,20 @@ class JackrabbitDB:
 
     @AlwaysLock
     def UpdateSingleIndex(self,idx,ptr,record):
-        fidx = self.dbIndex[idx].replace("|", ".")
+        fidx=self.dbIndex[idx].replace("|", ".")
         if not os.path.exists(fidx):
-            entries = self.BuildIndexEntries(idx, record, ptr)
+            entries=self.BuildIndexEntries(idx, record, ptr)
             FF.WriteList2File(fidx, entries, sync=self.syncIDX)
             return
 
         # If there is no new entries, don't waste cycles resaving the
         # file.
 
-        entries = FF.ReadFile2List(fidx, Unique=False)
+        entries=FF.ReadFile2List(fidx, Unique=False)
         newentries=self.BuildIndexEntries(idx, record, ptr)
         if newentries!=[]:
             entries.extend(newentries)
-            entries = self.SortIndex(entries,idx)
+            entries=self.SortIndex(entries,idx)
             FF.WriteList2File(fidx, entries, sync=self.syncIDX)
 
     # Internal function to split lists into indexable elements.
@@ -593,7 +593,7 @@ class JackrabbitDB:
     # AlwaysLock, in this case, just serves to reset the lock timeout
 
     def BuildIndexEntries(self, idx, record, ptr):
-        entries = []
+        entries=[]
         if "|" in idx:
 
             # Compound index: expand any list fields into multiple entries
@@ -601,10 +601,10 @@ class JackrabbitDB:
 
             # Reverse sorting marker doesn't matter here.
 
-            parts = idx.split('|')
-            value_lists = []
+            parts=idx.split('|')
+            value_lists=[]
             for part in parts:
-                raw = record.get(part.lstrip("!"),None)
+                raw=record.get(part.lstrip("!"),None)
                 if isinstance(raw, list):
                     value_lists.append([str(v) for v in raw])
                 elif raw is not None and raw!="":
@@ -613,20 +613,20 @@ class JackrabbitDB:
                     return []
 
             # Compound list, a list of lists
-            combos = [[]]
+            combos=[[]]
             for vl in value_lists:
-                new_combos = []
+                new_combos=[]
                 for prefix in combos:
                     for v in vl:
                         new_combos.append(prefix + [v])
-                combos = new_combos
+                combos=new_combos
 
             # Build the index framing
             for combo in combos:
-                val = "|".join(combo)
+                val="|".join(combo)
                 entries.append(json.dumps({"Key": val, "Offset": ptr}))
         else:
-            raw = record.get(idx.lstrip("!"),None)
+            raw=record.get(idx.lstrip("!"),None)
             if isinstance(raw, list):
                 for elem in raw:
                     entries.append(json.dumps({"Key": str(elem), "Offset": ptr}))
@@ -653,7 +653,7 @@ class JackrabbitDB:
         return ''.join(chr(0x10FFFF-ord(ch)) for ch in s)
 
     def ComparePartKey(self,p,reverse=False):
-        s = str(p).strip()
+        s=str(p).strip()
         if s == '':
             return (1, 0.0, '')            # empty -> string-like
 
@@ -661,7 +661,7 @@ class JackrabbitDB:
             # safe parse of Python literals (integers, floats, complex like
             # '2j', underscores allowed)
 
-            v = float(s)
+            v=float(s)
         except Exception:
             if reverse:
                 return (1, 0.0, self.inverseString(s.lower()))    # not a literal number -> string
@@ -800,14 +800,14 @@ class JackrabbitDB:
             return
 
         # Force rebuild
-        self.Error = None
-        self.dbTombstones = []
-        entries = []
-        ptr = 0
-        fh = open(self.dbName, "rb")
+        self.Error=None
+        self.dbTombstones=[]
+        entries=[]
+        ptr=0
+        fh=open(self.dbName, "rb")
         while True:
             self.Relock()
-            bline = fh.readline()
+            bline=fh.readline()
             # No more data
             if not bline:
                 break
@@ -821,7 +821,7 @@ class JackrabbitDB:
                 continue
 
             try:
-                record = json.loads(bline)
+                record=json.loads(bline)
             except Exception as err:
                 ptr+=len(bline)
                 print("REBUILD JSON:", err)
@@ -1000,17 +1000,17 @@ class JackrabbitDB:
     # finds rbash.
 
     def LinearContainsSearch(self, idx, substr):
-        fidx = self.dbIndex[idx].replace("|", ".")
+        fidx=self.dbIndex[idx].replace("|", ".")
         if not os.path.exists(fidx):
             return None
-        entries = FF.ReadFile2List(fidx, Unique=False)
+        entries=FF.ReadFile2List(fidx, Unique=False)
         if not entries:
             return None
 
-        results = []
+        results=[]
         for line in entries:
             try:
-                kv = json.loads(line)
+                kv=json.loads(line)
             except Exception:
                 continue
             if substr.lower() in kv['Key'].lower():
@@ -1035,11 +1035,11 @@ class JackrabbitDB:
                 if k.startswith("!"):
                     value="!"+value
                 widx.append(value)
-            target = "|".join(widx)
+            target="|".join(widx)
         else:
             target=str(record[idx.lstrip("!")])
             if idx.startswith("!"):
-                target = "!"+target
+                target="!"+target
 
         target=self.CompareAllKeys(target)
 
@@ -1047,8 +1047,8 @@ class JackrabbitDB:
         hi=len(entries)-1
         lo=0
         while lo<=hi:
-            mid = (lo + hi) // 2
-            kvtbl = json.loads(entries[mid])
+            mid=(lo + hi) // 2
+            kvtbl=json.loads(entries[mid])
 
             candidate_parts=[]
             index_parts=idx.split("|")
@@ -1059,15 +1059,15 @@ class JackrabbitDB:
                 if index_parts[i].startswith("!"):
                     value ="!"+value
                 candidate_parts.append(value)
-            candidate = "|".join(candidate_parts)
-            key = self.CompareAllKeys(candidate)
+            candidate="|".join(candidate_parts)
+            key=self.CompareAllKeys(candidate)
 
             if key == target:
                 return kvtbl["Offset"]
             elif key < target:
-                lo = mid + 1
+                lo=mid + 1
             else:
-                hi = mid - 1
+                hi=mid - 1
 
         return -1
 
@@ -1078,11 +1078,11 @@ class JackrabbitDB:
         # Find all entries whose raw Key starts with prefix.
         #
         # Example:
-        #   idx    = "!jrdbAdded|ID"
-        #   prefix = "1730000000|"
+        #   idx   ="!jrdbAdded|ID"
+        #   prefix="1730000000|"
 
-        fidx = self.dbIndex[idx].replace("|", ".")
-        entries = FF.ReadFile2List(
+        fidx=self.dbIndex[idx].replace("|", ".")
+        entries=FF.ReadFile2List(
             fidx,
             Unique=False
         )
@@ -1090,60 +1090,60 @@ class JackrabbitDB:
         if not entries:
             return None
 
-        index_parts = idx.split("|")
-        prefix_parts = str(prefix).split("|")
+        index_parts=idx.split("|")
+        prefix_parts=str(prefix).split("|")
 
         # Apply the index direction to the prefix comparison key.
-        marked_prefix_parts = []
+        marked_prefix_parts=[]
 
         for i in range(len(prefix_parts)):
-            value = prefix_parts[i]
+            value=prefix_parts[i]
 
             if i < len(index_parts):
                 if index_parts[i].startswith("!"):
-                    value = "!" + value
+                    value="!" + value
 
             marked_prefix_parts.append(value)
 
-        marked_prefix = "|".join(marked_prefix_parts)
-        target = self.CompareAllKeys(marked_prefix)
+        marked_prefix="|".join(marked_prefix_parts)
+        target=self.CompareAllKeys(marked_prefix)
 
         # Find the first candidate according to the same direction
         # used by SortIndex().
-        lo = 0
-        hi = len(entries) - 1
+        lo=0
+        hi=len(entries) - 1
 
         while lo <= hi:
-            mid = (lo + hi) // 2
-            kvtbl = json.loads(entries[mid])
+            mid=(lo + hi) // 2
+            kvtbl=json.loads(entries[mid])
 
-            key_parts = str(kvtbl["Key"]).split("|")
-            marked_key_parts = []
+            key_parts=str(kvtbl["Key"]).split("|")
+            marked_key_parts=[]
 
             for i in range(len(key_parts)):
-                value = key_parts[i]
+                value=key_parts[i]
 
                 if i < len(index_parts):
                     if index_parts[i].startswith("!"):
-                        value = "!" + value
+                        value="!" + value
 
                 marked_key_parts.append(value)
 
-            marked_key = "|".join(marked_key_parts)
-            key = self.CompareAllKeys(marked_key)
+            marked_key="|".join(marked_key_parts)
+            key=self.CompareAllKeys(marked_key)
 
             if key >= target:
-                hi = mid - 1
+                hi=mid - 1
             else:
-                lo = mid + 1
+                lo=mid + 1
 
         # Prefix matching uses the original stored keys.
         # Direction markers are only for binary ordering.
-        results = []
+        results=[]
 
         for i in range(lo, len(entries)):
-            kv = json.loads(entries[i])
-            raw_key = str(kv["Key"])
+            kv=json.loads(entries[i])
+            raw_key=str(kv["Key"])
 
             if raw_key.lower().startswith(str(prefix).lower()):
                 results.append(kv["Offset"])
@@ -1155,11 +1155,11 @@ class JackrabbitDB:
     # Blind search for a string in all indexes
 
     def SearchContains(self, srch):
-        self.Error = None
+        self.Error=None
 
-        search_text = str(srch).lower()
-        results = []
-        seen_ids = set()
+        search_text=str(srch).lower()
+        results=[]
+        seen_ids=set()
 
         for idx in self.dbIndex.keys():
             # Do not search internal identity/work indexes.
@@ -1169,10 +1169,10 @@ class JackrabbitDB:
             if idx.endswith("|jrdbID"):
                 continue
 
-            fidx = self.dbIndex[idx].replace("|", ".")
+            fidx=self.dbIndex[idx].replace("|", ".")
             if not os.path.exists(fidx):
                 continue
-            entries = FF.ReadFile2List(fidx,Unique=False)
+            entries=FF.ReadFile2List(fidx,Unique=False)
 
             if not entries:
                 continue
@@ -1183,7 +1183,7 @@ class JackrabbitDB:
                 except Exception:
                     continue
 
-                key = kvtbl["Key"]
+                key=kvtbl["Key"]
                 if not isinstance(key, str):
                     continue
                 if search_text not in key.lower():
@@ -1191,17 +1191,17 @@ class JackrabbitDB:
 
                 offset=kvtbl["Offset"]
                 try:
-                    record = self.Read(offset)
+                    record=self.Read(offset)
                 except Exception:
                     continue
 
                 if record is None:
                     continue
 
-                record_id = record.get("jrdbID")
+                record_id=record.get("jrdbID")
 
                 if record_id is not None:
-                    record_id = str(record_id)
+                    record_id=str(record_id)
                     if record_id in seen_ids:
                         continue
                     seen_ids.add(record_id)
@@ -1226,7 +1226,7 @@ class JackrabbitDB:
         if idx not in self.dbIndex:
             raise Exception(f"Index not loaded: {idx}")
 
-        fidx = self.dbIndex[idx].replace("|", ".")
+        fidx=self.dbIndex[idx].replace("|", ".")
         if not os.path.exists(fidx):
             return 0
 
@@ -1248,7 +1248,7 @@ class JackrabbitDB:
 
             # Set up search record
             srch={}
-            parts=str(entry['Key']).split('|') # Number of parts MUST always = # of keys
+            parts=str(entry['Key']).split('|') # Number of parts MUST always=# of keys
             for i in range(len(keys)):
                 srch[keys[i].lstrip("!")]=parts[i]
 
@@ -1277,6 +1277,152 @@ class JackrabbitDB:
         # Purge old index
         self.RemoveIndex(idx,delete=True)
         return count
+
+    # Find the oldest record in the database. In a normal database, jrdbAdded and
+    # jrdbUpdated will exist and indexing is the BEST direction to manage this
+    # situation.
+
+    def FindOldest(self):
+        dbf=None
+
+        try:
+            oldest_never_updated_time=None
+            oldest_never_updated_jrdbid=None
+
+            oldest_updated_time=None
+            oldest_updated_jrdbid=None
+
+            try:
+                dbf=open(self.dbName, "rb")
+            except Exception:
+                return None
+
+            while True:
+                try:
+                    line=dbf.readline()
+                except Exception:
+                    break
+
+                if not line:
+                    break
+
+                try:
+                    # Skip tombstones and non-JSON lines.
+                    if not line.startswith(b"{"):
+                        continue
+
+                    record=json.loads(line)
+
+                    if not isinstance(record, dict):
+                        continue
+
+                    # Skip records that fail integrity validation.
+                    if not self.VerifyBlake(record):
+                        continue
+
+                    jrdb_id=record.get("jrdbID")
+                    jrdb_added=record.get("jrdbAdded")
+
+                    if jrdb_id is None:
+                        continue
+
+                    if jrdb_added is None:
+                        continue
+
+                    added_time=float(jrdb_added)
+                    updated_time=record.get("jrdbUpdated",None)
+
+                    # Prefer records that have never been updated.
+                    if updated_time is None:
+                        if (oldest_never_updated_time is None or added_time < oldest_never_updated_time):
+                            oldest_never_updated_time=added_time
+                            oldest_never_updated_jrdbid=str(jrdb_id)
+                        continue
+
+                    updated_time=float(updated_time)
+
+                    if (oldest_updated_time is None or updated_time < oldest_updated_time):
+                        oldest_updated_time=updated_time
+                        oldest_updated_jrdbid=str(jrdb_id)
+
+                except Exception:
+                    # Skip malformed JSON and all record-level errors.
+                    continue
+
+            if oldest_never_updated_jrdbid is not None:
+                return oldest_never_updated_jrdbid
+            if oldest_updated_jrdbid is not None:
+                return oldest_updated_jrdbid
+            return None
+
+        finally:
+            if dbf is not None:
+                try:
+                    dbf.close()
+                except Exception:
+                    pass
+
+    # Find the first record that is missing the field
+
+    def FindMissing(self, field):
+        dbf = None
+
+        try:
+            if field is None:
+                return None
+
+            try:
+                dbf = open(self.dbName, "rb")
+            except Exception:
+                return None
+
+            while True:
+                try:
+                    line = dbf.readline()
+                except Exception:
+                    break
+
+                if not line:
+                    break
+
+                try:
+                    # Skip tombstones and non-JSON lines.
+                    if not line.startswith(b"{"):
+                        continue
+
+                    record = json.loads(line)
+
+                    if not isinstance(record, dict):
+                        continue
+
+                    # Skip records that fail integrity validation.
+                    if not self.VerifyBlake(record):
+                        continue
+
+                    # Only a completely absent field is missing.
+                    if field in record:
+                        continue
+
+                    jrdb_id = record.get("jrdbID")
+
+                    if jrdb_id is None:
+                        continue
+
+                    return jrdb_id
+
+                except Exception:
+                    # Skip malformed JSON and all record-level errors.
+                    continue
+
+            return None
+
+        finally:
+            if dbf is not None:
+                try:
+                    dbf.close()
+                except Exception:
+                    pass
+
 
 ###
 ### End library

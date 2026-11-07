@@ -47,6 +47,8 @@ import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
 
+UserAgent=f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 NewshoundAI/{Version} (https://www.rapmd.org/disclaimer.html)"
+
 logging.getLogger('playwright').disabled=True
 
 ccTLD={".af":"AF", ".ax":"AX", ".al":"AL", ".dz":"DZ", ".as":"AS",
@@ -102,7 +104,7 @@ ccTLD={".af":"AF", ".ax":"AX", ".al":"AL", ".dz":"DZ", ".as":"AS",
     ".online":"US", ".google":"US", ".world":"US", ".land":"US", ".int":"US",
     ".network":"US", ".community":"US", ".blog":"US", ".press":"UAE",
     ".site":"UAE", ".tech":"UAE", ".wales":"UK", ".cymru":"UK", ".top":"CN", 
-    ".earth":"JP" }
+    ".earth":"JP",".scot":"SCO" }
 
 # The `DecodeHashCodes` function takes an input string and decodes any numeric
 # character references (e.g., `&#65;`) it contains, replacing them with their
@@ -257,7 +259,7 @@ def ScrapingAnt(url,userhome=None):
 # Use Jina.AI to get webpage
 
 @DF.function_trapper(None)
-def JinaAI(url, ua=None):
+def JinaAI(url, ua=UserAgent):
     if not isinstance(url, str):
         return None
 
@@ -266,16 +268,7 @@ def JinaAI(url, ua=None):
     if not url.startswith(("http://", "https://")):
         return None
 
-    userAgent = (
-        ua.strip()
-        if isinstance(ua, str) and ua.strip()
-        else (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/150.0.0.0 Safari/537.36 "
-            "NewshoundAI/1.0"
-        )
-    )
+    userAgent=ua.strip()
 
     headers = {
         "Accept": "application/json",
@@ -320,9 +313,8 @@ def JinaAI(url, ua=None):
     return content if content else None
 
 @DF.function_trapper(None)
-def DirectURL(url, ua=None):
+def DirectURL(url, ua=UserAgent):
     # Set the user agent
-    userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     if ua!=None and ua.strip()!='':
         userAgent=ua
 
@@ -432,13 +424,9 @@ def StripHTML(htmlbuf):
 # Ant=ScrapingAnt,JinaAI,FireCrawl
 
 @DF.function_trapper(None)
-def html2text(url,external=False,userhome=None,raw=False, ua=None,useScrape="JinaAI"):
+def html2text(url,external=False,userhome=None,raw=False, ua=UserAgent,useScrape="JinaAI"):
     # Set the user agent
-    userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    if ua!=None and ua.strip()!='':
-        userAgent=ua
-
-    headers={'User-Agent': userAgent}
+    headers={'User-Agent': ua}
 
     # Video transcript?
     if 'youtube.com/watch' in url or 'youtu.be/' in url:
@@ -461,7 +449,7 @@ def html2text(url,external=False,userhome=None,raw=False, ua=None,useScrape="Jin
             # needs to be done after EVERY update.
             with sync_playwright() as p:
                 browser = p.chromium.launch()
-                context = browser.new_context(user_agent=userAgent)
+                context = browser.new_context(user_agent=ua)
                 page = context.new_page()
                 page.set_default_timeout(60*1000)
                 page.goto(url,wait_until="domcontentloaded")

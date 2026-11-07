@@ -186,7 +186,7 @@ def renice(n):
 # by the `s` parameter, without considering system load.
 
 @DF.function_trapper
-def ElasticSleep(s,Fuzzy=True):
+def ElasticSleep(s=0,Fuzzy=True):
     # Do we want a fuzzy sleep or an exact sleep?
     if Fuzzy:
         throttle=0
@@ -214,11 +214,13 @@ def ElasticSleep(s,Fuzzy=True):
         if (d>c):
             throttle=(d-c)*delay
 
+        # Give up slice to kernal
+        os.sched_yield()
         time.sleep(s+delay+throttle)
     else:
+        # Give up slice to kernal
+        os.sched_yield()
         time.sleep(s)
-    # Give up slice to kernal
-    os.sched_yield()
 
 # The `ElasticDelay` function calculates a dynamic delay based on the system's
 # current load average and CPU count. It retrieves the load average using

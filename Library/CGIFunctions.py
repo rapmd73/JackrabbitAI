@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# Jackrabit AI
+# 2024 Copyright © Robert APM Darin
+# All rights reserved unconditionally.
+
 # Strict CGI helper class for safe GET and POST form endpoints.
 # POST data is never logged, stored, echoed, or placed in errors by this class.
 
