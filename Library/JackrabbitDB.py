@@ -477,7 +477,7 @@ class JackrabbitDB:
         r=json.dumps(record,sort_keys=True,separators=(',', ':'))+'\n'
         self.WriteTransaction("UPDATE",record)
         # Turn old record to tombstone
-        self.Delete(offset=offset,InUpdate=True)
+        self.Delete(offset=offset,InUpdate=True,override=override)
         # Write the new record
         if roa:
             # Recycle space
@@ -501,7 +501,7 @@ class JackrabbitDB:
 
     # Delete a record
     @AlwaysLock
-    def Delete(self,offset=None,InUpdate=False):
+    def Delete(self,offset=None,InUpdate=False,override=False):
         if offset is None:
             return False
 
@@ -511,7 +511,7 @@ class JackrabbitDB:
 
         # Verify old record, boundary start/Blake3
         # This blocks random offset attacks or bad programming
-        buf=self.Read(offset)
+        buf=self.Read(offset,override=override)
         if buf is None:
             raise Exception(f"Record damage as {offset}")
         buf=json.dumps(buf,sort_keys=True,separators=(',', ':'))  # STRIPS \n from count, which leave it in file

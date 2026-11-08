@@ -229,7 +229,7 @@ def main():
     # with a janky "Max Headroom" effect.
 
     absolute_thresh_db=-40.0
-    min_silence_len_ms=300
+    min_silence_len_ms=500
     padding_ms=min_silence_len_ms-1
 
     if len(sys.argv)>3:

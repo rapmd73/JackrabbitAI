@@ -47,7 +47,8 @@ import DecoratorFunctions as DF
 import CoreFunctions as CF
 import FileFunctions as FF
 
-UserAgent=f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 NewshoundAI/{Version} (https://www.rapmd.org/disclaimer.html)"
+Version="0.0.0.2.0"
+UserAgent=f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 JackrabbitAI/{Version} (https://www.rapmd.org/disclaimer.html)"
 
 logging.getLogger('playwright').disabled=True
 
