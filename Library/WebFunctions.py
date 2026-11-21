@@ -38,6 +38,7 @@ import pdfplumber
 import youtube_transcript_api
 import scrapingant_client as Ant
 import firecrawl
+from nimble_python import Nimble
 import logging
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
@@ -344,6 +345,23 @@ def FireCrawl(url,userhome=None):
         return None
     return result.raw_html
 
+# Numble Proxy
+
+@DF.function_trapper(None)
+def NimbleProxy(url,userhome=None):
+    # Read Tokens
+    Tokens=FF.ReadTokens(userhome=userhome)
+
+    nimble = Nimble(api_key=Tokens["Nimble"])
+
+    result = nimble.extract.run(
+        url="https://www.example.com",   # swap in any URL you want
+        render=True,                     # runs the page's JavaScript first
+        formats=["html"]                 # just raw HTML
+    )
+
+    return result.data.html
+
 # The `StripHTML` function takes an HTML string (`htmlbuf`) as input and
 # removes various HTML elements to extract the plain text content. It first
 # removes the entire `<head>` section, followed by `<script>` and `<style>`
@@ -422,10 +440,11 @@ def StripHTML(htmlbuf):
 # cannot be completed successfully due to external factors like network errors
 # or unsupported formats.
 
-# Ant=ScrapingAnt,JinaAI,FireCrawl
+# Ant=ScrapingAnt
+# JinaAI,FireCrawl,Nimble
 
 @DF.function_trapper(None)
-def html2text(url,external=False,userhome=None,raw=False, ua=UserAgent,useScrape="JinaAI"):
+def html2text(url,external=False,userhome=None,raw=False,ua=UserAgent,useScrape="JinaAI"):
     # Set the user agent
     headers={'User-Agent': ua}
 
@@ -440,6 +459,8 @@ def html2text(url,external=False,userhome=None,raw=False, ua=UserAgent,useScrape
     if external==True:
         if useScrape=="JinaAI":
             html=JinaAI(url,ua)
+        elif useScrape=="Numble":
+            html=NimbleProxy(url,userhome=userhome)
         elif useScrape=="FireCrawl":
             html=FireCrawl(url,userhome=userhome)
         elif useScrape=="Ant":

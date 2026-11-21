@@ -15,6 +15,7 @@ youtube-transcript-api
 pdfplumber
 scrapingant-client
 firecrawl-py
+nimble_python
 feedparser
 praw
 atproto

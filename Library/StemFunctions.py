@@ -42,6 +42,7 @@ strong irregulars, derivational suffixes, and produces real-looking roots.
 
 import sys
 sys.path.append('/home/JackrabbitAI/Library')
+import os
 import re
 
 # ---------------------------------------------------------------------------
@@ -259,6 +260,32 @@ _DERIVATIONAL_EXCEPTIONS = {
     'sunday', 'texas', 'thursday', 'tokyo', 'translation', 'tuesday', 'twitter',
     'usa', 'valediction', 'valuation', 'wednesday',
 }
+
+STOP_WORDS=[
+    "a", "an", "the","also",
+    "i", "me", "my", "myself", "we", "our", "ours", "ourselves",
+    "you", "your", "yours", "yourself", "yourselves",
+    "he", "him", "his", "himself", "she", "her", "hers", "herself",
+    "it", "its", "itself", "it's",
+    "they", "them", "their", "theirs", "themselves",
+    "what", "which", "who", "whom", "this", "that", "these", "those",
+    "am", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "having",
+    "do", "does", "did", "doing",
+    "can", "could", "may", "might", "must", "shall", "should", "will", "would",
+    "about", "above", "across", "after", "against", "along", "among", "around",
+    "at", "before", "behind", "below", "beneath", "beside", "between", "beyond",
+    "by", "down", "during", "except", "for", "from", "in", "inside", "into",
+    "like", "near", "of", "off", "on", "onto", "out", "outside", "over", "past",
+    "since", "through", "throughout", "to", "toward", "under", "underneath",
+    "until", "up", "upon", "with", "within", "without",
+    "and", "but", "or", "nor", "so", "yet", "for", "although", "because", "if",
+    "unless", "until", "while", "whereas", "whether",
+    "all", "any", "both", "each", "few", "more", "most", "other", "some", "such",
+    "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "said",
+    "just", "now", "then", "here", "there", "when", "where", "why", "how",
+    "once", "again", "further"]
+
 # ---------------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------------
@@ -665,6 +692,19 @@ def _derivational(w):
 # PUBLIC API
 # ---------------------------------------------------------------------------
 
+def IsStopWord(word):
+    """Return True if *word* (case-insensitive) is a function-word stop word."""
+    return word.lower().strip() in STOP_WORDS
+
+def RemoveStopWords(words):
+    """Return a new list with function-word stop words removed.
+
+    Takes any list of words and returns the list without stop words.
+    Preserves original casing and order. Content words (nouns, verbs,
+    adjectives, proper names) are always kept.
+    """
+    return [w for w in words if not IsStopWord(w)]
+
 def Stem(word):
     """Return the English stem of *word* — a real-looking root form."""
     w = word.lower().strip()
@@ -684,6 +724,7 @@ def Stem(word):
     w = _derivational(w)
 
     return w
+
 # ---------------------------------------------------------------------------
 # Embedded test harness (self-contained)
 # Run: python3 /tmp/Work/StemFunctions.py --test
@@ -914,9 +955,31 @@ def run_tests():
     print(f"\n{total} tests: {passed} passed, {failed} failed")
     return failed == 0
 
-
 if __name__ == "__main__":
-    import sys
     if "--test" in sys.argv or "-t" in sys.argv:
         ok = run_tests()
+
+        sample = [
+            "The", "General", "ordered", "the", "troops", "to", "advance",
+            "at", "dawn", "and", "secure", "the", "border", "region", "."
+        ]
+        filtered = RemoveStopWords(sample)
+
+        print("Original :", sample)
+        print("Filtered :", filtered)
+
+        # Demonstrate that content words are preserved
+        assert "General" in filtered, "content word 'General' must be kept"
+        assert "troops" in filtered, "content word 'troops' must be kept"
+        assert "border" in filtered, "content word 'border' must be kept"
+        assert "The" not in filtered, "function word 'The' must be removed"
+        assert "to" not in filtered, "function word 'to' must be removed"
+        assert "and" not in filtered, "function word 'and' must be removed"
+
+        # RemoveStopWords() works identically on any list
+        mixed = ["The", "quick", "brown", "fox", "is", "very", "smart"]
+        assert RemoveStopWords(mixed) == ["quick", "brown", "fox", "smart"]
+        assert RemoveStopWords(mixed) == ["quick", "brown", "fox", "smart"]
+
+        print("\nAll assertions passed.")
         sys.exit(0 if ok else 2)

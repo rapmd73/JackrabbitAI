@@ -37,7 +37,10 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class JackrabbitDB:
-    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=900,ReadOnly=False):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=900,ReadOnly=False,dlmName=None,dlmIdentity=None):
+        # DLM locker identity for long locks
+        self.dlmName=dlmName
+        self.dlmIdentity=dlmIdentity
         # Main database
         self.ReadOnlyIndexes=ReadOnly
         self.syncDB=syncDB
@@ -49,7 +52,7 @@ class JackrabbitDB:
         # locks have auto expire
         self.expire=expire
         self.dbLock={}  # Extablish dict for main and record locks
-        self.dbLock['jrdbMAIN']=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7)
+        self.dbLock['jrdbMAIN']=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
         self.lockDelta={} # track lock expirations to extend self.expire as needed.
         # deleted records, time outs.
         self.dbTombstones=[]
@@ -59,7 +62,8 @@ class JackrabbitDB:
         self.dbCursor={}
 
         # Make database directory
-        FF.mkdir(self.dbDir)
+        if not ReadOnly:
+            FF.mkdir(self.dbDir)
 
         # Create index table
         self.dbIndex={}
@@ -117,7 +121,7 @@ class JackrabbitDB:
 
     def IsLocked(self,acquire=False,id='jrdbMAIN'):
         if id not in self.dbLock:
-            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
         status=self.dbLock[id].IsLocked(expire=self.expire, acquire=acquire).lower()
         if acquire and status=='locked':
             self.lockDelta[id]=time.time()
@@ -128,7 +132,7 @@ class JackrabbitDB:
             expire=getattr(self, 'expire', 300)  # Read at RUNTIME
 
         if id not in self.dbLock:
-            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
 
         status=self.dbLock[id].Lock(expire=expire).lower()
 
@@ -159,7 +163,7 @@ class JackrabbitDB:
     # Brutal and unforgiving, but stable
     def WaitLock(self,id='jrdbMAIN'):
         if id not in self.dbLock:
-            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7)
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
 
         stime=time.time()
         while True:
