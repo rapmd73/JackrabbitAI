@@ -42,6 +42,10 @@ if len(sys.argv)>2:
         sys.argv.remove('-ant')
         external=True
         scraper='Ant'
+    if '-nimble' in sys.argv:
+        sys.argv.remove('-nimble')
+        external=True
+        scraper='Nimble'
     if '-fc' in sys.argv:
         sys.argv.remove('-fc')
         external=True

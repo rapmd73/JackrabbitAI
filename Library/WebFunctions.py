@@ -355,7 +355,7 @@ def NimbleProxy(url,userhome=None):
     nimble = Nimble(api_key=Tokens["Nimble"])
 
     result = nimble.extract.run(
-        url="https://www.example.com",   # swap in any URL you want
+        url=url,   # swap in any URL you want
         render=True,                     # runs the page's JavaScript first
         formats=["html"]                 # just raw HTML
     )
@@ -459,7 +459,7 @@ def html2text(url,external=False,userhome=None,raw=False,ua=UserAgent,useScrape=
     if external==True:
         if useScrape=="JinaAI":
             html=JinaAI(url,ua)
-        elif useScrape=="Numble":
+        elif useScrape=="Nimble":
             html=NimbleProxy(url,userhome=userhome)
         elif useScrape=="FireCrawl":
             html=FireCrawl(url,userhome=userhome)
