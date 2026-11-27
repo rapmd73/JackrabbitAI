@@ -13,15 +13,25 @@ import os
 
 from JackrabbitDB import JackrabbitDB
 
+display=False
+ispack=False
+if len(sys.argv)>1:
+    if '-pack' in sys.argv:
+        ispack=True
+        sys.argv.remove('-pack')
+    if '-display' in sys.argv:
+        display=True
+        sys.argv.remove('-display')
+
 if len(sys.argv)<2:
     print("A JackrabbitDB database MUST be provided")
     sys.exit(0)
 
 db=JackrabbitDB(sys.argv[1])
-vdb=db.VerifyDatabase()
+vdb=db.VerifyDatabase(display=display)
 print(f"Database verified: {vdb}")
 
-#if vdb:
-#    print("Packing...")
-#    db.PackDatabase() #RemoveCorrupt=True)
-#    print("Done")
+if vdb and ispack:
+    print("Packing...")
+    db.PackDatabase() #RemoveCorrupt=True)
+    print("Done")

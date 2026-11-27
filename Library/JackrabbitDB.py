@@ -37,12 +37,13 @@ import CoreFunctions as CF
 import FileFunctions as FF
 
 class JackrabbitDB:
-    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=900,ReadOnly=False,dlmName=None,dlmIdentity=None):
+    def __init__(self,name,idx=None,syncDB=True,syncIDX=False,expire=900,ReadOnly=False,dlmName=None,dlmIdentity=None,AllowExtention=False):
         # DLM locker identity for long locks
         self.dlmName=dlmName
         self.dlmIdentity=dlmIdentity
         # Main database
         self.ReadOnlyIndexes=ReadOnly
+        self.AllowExtention=AllowExtention
         self.syncDB=syncDB
         self.syncIDX=syncIDX
         # Name of database becomes the directory name on disk
@@ -51,8 +52,11 @@ class JackrabbitDB:
         self.dbTransaction=f"{self.dbDir}/Transaction.log"
         # locks have auto expire
         self.expire=expire
+        self.dbExpireLock=DLM.Locker(f"dbExpireLock.{self.dbDir}",Timeout=self.expire,Retry=37,name=self.dlmName,identity=self.dlmIdentity,AllowExtention=self.AllowExtention)
+        self.dbExpireMemory=DLM.Locker(f"dbExpireMemory.{self.dbDir}",ID=f"dbExpire.{self.dbDir}",Timeout=self.expire,Retry=37,name=self.dlmName,identity=self.dlmIdentity,AllowExtention=self.AllowExention)
+
         self.dbLock={}  # Extablish dict for main and record locks
-        self.dbLock['jrdbMAIN']=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
+        self.dbLock['jrdbMAIN']=DLM.Locker(f"dbLock.{self.dbDir}",Timeout=self.dbLockExpire(),Retry=7,name=self.dlmName,identity=self.dlmIdentity,AllowExtention=self.AllowExtention)
         self.lockDelta={} # track lock expirations to extend self.expire as needed.
         # deleted records, time outs.
         self.dbTombstones=[]
@@ -75,13 +79,44 @@ class JackrabbitDB:
         # Force rebuild the index files
         self.CheckIndexes()
 
+    # Set the expiration time shared for ALL processes.
+
+    def dbLockExpire(self,expire=None):
+        # This is not the best approach, but this is CRITICAL
+        while True:
+            status=self.dbExpireLock.Lock()
+            if status=='locked':
+                break
+            CF.ElasticSleep()
+
+        try:
+            sData=self.dbExpireMemory.Get()
+
+            remote=0
+            if sData is not None and 'DataStore' in sData:
+                try:
+                    remote=float(sData['DataStore'])
+                except:
+                    pass
+
+            if expire:
+                self.expire=max(remote,self.expire,expire)
+            else:
+                self.expire=max(remote,self.expire)
+
+            # Update only id local if higher. Figure out a way to force push
+            if self.expire>=remote:
+                self.dbExpireMemory.Put(data=str(self.expire),expire=self.expire*10)
+        finally:
+            self.dbExpireLock.Unlock()
+
+        return self.expire
+
     # Decorator for locking
 
     @staticmethod
     def AlwaysLock(func):
         def wrapper(self, *args, **kwargs):
-            expire=getattr(self, 'expire', 300)  # Read at RUNTIME
-
             # Bypass locking, ONLY SAFE FOR READ ONLY FUNCTIONS
 
             if self.ReadOnlyIndexes:
@@ -121,20 +156,20 @@ class JackrabbitDB:
 
     def IsLocked(self,acquire=False,id='jrdbMAIN'):
         if id not in self.dbLock:
-            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
-        status=self.dbLock[id].IsLocked(expire=self.expire, acquire=acquire).lower()
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.dbLockExpire(),Retry=7,name=self.dlmName,identity=self.dlmIdentity,AllowExtention=self.AllowExtention)
+
+        status=self.dbLock[id].IsLocked(expire=self.dbLockExpire(), acquire=acquire).lower()
+
         if acquire and status=='locked':
             self.lockDelta[id]=time.time()
+
         return status
 
     def Lock(self,expire=None,id='jrdbMAIN'):
-        if not expire:
-            expire=getattr(self, 'expire', 300)  # Read at RUNTIME
-
         if id not in self.dbLock:
-            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.dbLockExpire(expire),Retry=7,name=self.dlmName,identity=self.dlmIdentity,AllowExtention=self.AllowExtention)
 
-        status=self.dbLock[id].Lock(expire=expire).lower()
+        status=self.dbLock[id].Lock(expire=self.dbLockExpire(expire)).lower()
 
         if status!="locked":
             self.Error=f"Lock failed: {status}"
@@ -150,20 +185,23 @@ class JackrabbitDB:
         if id not in self.dbLock:
             return "notfound"
         res=self.dbLock[id].Unlock()
+        t=time.time()-self.lockDelta[id]    # Time actually locked
+        print(f"{id:20} {t}")
         self.dbLock.pop(id,None)
         self.lockDelta.pop(id,None)
         return res
 
     def Relock(self,id='jrdbMAIN'):
+        self.expire=self.dbLockExpire()
         if (time.time()-self.lockDelta[id])>(self.expire/2):
-            self.expire*=2
+            self.dbLockExpire(self.expire*2)
             print(f"Lock expiration doubled: {self.expire}")
         return (self.Lock(id=id).lower()=='locked')
 
     # Brutal and unforgiving, but stable
     def WaitLock(self,id='jrdbMAIN'):
         if id not in self.dbLock:
-            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.expire,Retry=7,name=self.dlmName,identity=self.dlmIdentity)
+            self.dbLock[id]=DLM.Locker(f"dbLock.{self.dbDir}.{id}",Timeout=self.dbLockExpire(),Retry=7,name=self.dlmName,identity=self.dlmIdentity,AllowExtention=self.AllowExtention)
 
         stime=time.time()
         while True:
@@ -171,7 +209,7 @@ class JackrabbitDB:
             if status!='notowner':  # Someone else has it locked
                 break
             # if wait time expires
-            if (time.time()-stime)>self.expire:
+            if (time.time()-stime)>self.dbLockExpire():
                 return 'timeout'
             os.sched_yield()
             time.sleep(0.1) # sleep 1/10th second
